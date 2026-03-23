@@ -4,13 +4,16 @@ import numpy as np
 import open3d as o3d
 
 from face_blender_shape.constants import (
+    DEFAULT_OPEN3D_BACKGROUND_RGB,
     DEFAULT_OPEN3D_HEIGHT,
+    DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA,
     DEFAULT_OPEN3D_WINDOW_NAME,
     DEFAULT_OPEN3D_WIDTH,
     DEFAULT_VIEW_SCALE,
 )
 
-SKIN_TONE = np.array([0.87, 0.73, 0.62])
+# Slightly warmer, less saturated — reads less “wax figure” under simple lighting.
+SKIN_TONE = np.array([0.80, 0.69, 0.62])
 
 # Open3D: larger set_zoom() → camera farther (object smaller).
 # SRanipal meshes use ~10–40 unit extents; the old 0.5/max_dim heuristic still works.
@@ -37,6 +40,18 @@ class Open3DMeshViewer:
         )
         self._mesh: o3d.geometry.TriangleMesh | None = None
         self._camera_initialized = False
+        self._matte_gamma = float(DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA)
+        self._apply_friendly_render_settings()
+
+    def _apply_friendly_render_settings(self) -> None:
+        """Less harsh than Open3D defaults: smooth shading, soft backdrop, vertex colors on."""
+        ro = self._visualizer.get_render_option()
+        ro.mesh_color_option = o3d.visualization.MeshColorOption.Color
+        ro.mesh_shade_option = o3d.visualization.MeshShadeOption.Color
+        ro.background_color = np.asarray(DEFAULT_OPEN3D_BACKGROUND_RGB, dtype=np.float64)
+        ro.light_on = True
+        ro.mesh_show_wireframe = False
+        ro.show_coordinate_frame = False
 
     def _setup_camera(self, vertices: np.ndarray) -> None:
         """Point the camera at the mesh center, looking from the front."""
@@ -65,6 +80,11 @@ class Open3DMeshViewer:
             zoom = (_SMALL_MESH_ZOOM_COEFF * max(max_dim, 1e-6)) / self._view_scale
         vc.set_zoom(zoom)
 
+    def _matte_vertex_colors(self, colors: np.ndarray) -> np.ndarray:
+        """Darken bright regions — Open3D has no roughness control; this tames blown highlights."""
+        x = np.clip(np.asarray(colors, dtype=np.float64), 0.0, 1.0)
+        return np.clip(np.power(x, self._matte_gamma), 0.0, 1.0)
+
     def update(
         self,
         vertices: np.ndarray,
@@ -72,25 +92,24 @@ class Open3DMeshViewer:
         *,
         vertex_colors: np.ndarray | None = None,
     ) -> None:
+        if vertex_colors is not None:
+            display_colors = self._matte_vertex_colors(vertex_colors)
+        else:
+            display_colors = self._matte_vertex_colors(np.tile(SKIN_TONE, (len(vertices), 1)))
+
         if self._mesh is None:
             self._mesh = o3d.geometry.TriangleMesh()
             self._mesh.vertices = o3d.utility.Vector3dVector(vertices)
             self._mesh.triangles = o3d.utility.Vector3iVector(faces)
 
-            if vertex_colors is not None:
-                self._mesh.vertex_colors = o3d.utility.Vector3dVector(vertex_colors)
-            else:
-                self._mesh.vertex_colors = o3d.utility.Vector3dVector(
-                    np.tile(SKIN_TONE, (len(vertices), 1))
-                )
+            self._mesh.vertex_colors = o3d.utility.Vector3dVector(display_colors)
 
             self._mesh.compute_vertex_normals()
             self._visualizer.add_geometry(self._mesh)
         else:
             self._mesh.vertices = o3d.utility.Vector3dVector(vertices)
             self._mesh.triangles = o3d.utility.Vector3iVector(faces)
-            if vertex_colors is not None:
-                self._mesh.vertex_colors = o3d.utility.Vector3dVector(vertex_colors)
+            self._mesh.vertex_colors = o3d.utility.Vector3dVector(display_colors)
             self._mesh.compute_vertex_normals()
             self._visualizer.update_geometry(self._mesh)
 

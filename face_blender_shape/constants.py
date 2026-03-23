@@ -46,6 +46,10 @@ DEFAULT_PLAYBACK_FPS = 30.0
 DEFAULT_OPEN3D_WINDOW_NAME = "Face Blender Shape Viewer"
 DEFAULT_OPEN3D_WIDTH = 1280
 DEFAULT_OPEN3D_HEIGHT = 900
+# Soft cool-gray backdrop (pure white reads clinical / “specimen” and worsens uncanny valley).
+DEFAULT_OPEN3D_BACKGROUND_RGB = (0.86, 0.89, 0.93)
+# >1.0 darkens bright albedo (less “plastic shine” under Open3D’s fixed lighting).
+DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA = 1.14
 # >1 pulls the camera closer (face fills more of the window). See Open3D ViewControl.set_zoom.
 DEFAULT_VIEW_SCALE = 2.2
 DEFAULT_HEAD_OBJECT_NAME = "Head"

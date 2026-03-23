@@ -102,6 +102,12 @@ uv run --no-sync python blender_interface.py --model metahuman --path data/examp
 
 **说明**：再往上要「照片级真人」，通常要在 Blender / UE 里换 **高精度扫描或 Metahuman 完整流程**（皮肤纹理、毛发、眼球折射等）。任意好看的头模若要接 Vive 数据，仍需 **与 SRanipal 或 ARKit 等 blendshape 命名兼容**，否则要自己重做映射或重定向。
 
+### 为什么预览仍可能「有点吓人」？
+
+本项目的 Open3D 窗口是 **科研向快速预览**：顶点色 + 简单光照，**没有** PBR、次表面散射、睫毛、头发、眼球折射或电影级材质。人脑对「像人但缺细节的脸」特别敏感（恐怖谷）。若要给他人做 **展示或录制**，更合适的做法是：在此导出网格/曲线后，在 **Blender / Unreal** 里绑定材质与灯光再渲染。
+
+为减轻默认预览的「油光塑料感」，查看器会对顶点色做轻度 **压亮（matte gamma）**，可在 `constants.DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA` 微调（约 `1.0`～`1.25`，越大越哑光、整体越暗）。
+
 ## Blender Shape 转关键点
 
 使用兼容脚本：

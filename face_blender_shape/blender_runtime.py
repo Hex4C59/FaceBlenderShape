@@ -324,19 +324,23 @@ class FaceBlenderRuntime:
 
     @classmethod
     def _material_rgb_for_eye_viewport(cls, mat) -> np.ndarray:
-        """Principled base color, tuned so iris/pupil stay visible under flat Open3D shading."""
+        """Principled base color tuned for simple Open3D lighting (less uncanny / “dead eye”)."""
         rgb = cls._principled_base_color_rgb(mat)
         if mat is None:
             return rgb
         name = (mat.name or "").lower()
         if "pupil" in name:
-            return np.clip(rgb, 0.0, 1.0)
+            # Pure black reads as a “hole”; lift to dark brown so the eye reads as organic.
+            floor = np.array([0.10, 0.085, 0.09], dtype=np.float64)
+            return np.clip(np.maximum(rgb, floor), 0.0, 1.0)
         if "iris" in name:
-            # Slightly richer brown so the limbus reads in vertex-color mode
-            return np.clip(rgb * np.array([1.05, 1.02, 1.0], dtype=np.float64), 0.0, 1.0)
+            # Slightly de-saturate very red browns (less aggressive / bloodshot in vertex color).
+            rich = np.clip(rgb * np.array([0.94, 1.06, 1.04], dtype=np.float64), 0.0, 1.0)
+            hazel = np.array([0.33, 0.23, 0.16], dtype=np.float64)
+            return np.clip(0.70 * rich + 0.30 * hazel, 0.0, 1.0)
         # Sclera / catch-all light greys → soft blue-white (still reads as eyeball, not skin)
         if float(rgb.mean()) >= 0.45:
-            return np.array([0.92, 0.93, 0.96], dtype=np.float64)
+            return np.array([0.93, 0.94, 0.97], dtype=np.float64)
         return rgb
 
     @classmethod
