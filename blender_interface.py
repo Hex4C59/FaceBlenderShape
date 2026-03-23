@@ -7,7 +7,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from face_blender_shape.blender_runtime import FaceBlenderRuntime
-from face_blender_shape.cli import preview_all_shapes, preview_sequence
+from face_blender_shape.cli import parse_extra_mesh_names, preview_all_shapes, preview_sequence
 from face_blender_shape.constants import (
     DEFAULT_OPEN3D_HEIGHT,
     DEFAULT_OPEN3D_WIDTH,
@@ -28,6 +28,8 @@ def play_sequence(
     view_scale: float = DEFAULT_VIEW_SCALE,
     window_width: int = DEFAULT_OPEN3D_WIDTH,
     window_height: int = DEFAULT_OPEN3D_HEIGHT,
+    head_object_name: str | None = None,
+    extra_mesh_names: tuple[str, ...] | None = None,
 ):
     preview_sequence(
         path,
@@ -38,6 +40,8 @@ def play_sequence(
         view_scale=view_scale,
         window_width=window_width,
         window_height=window_height,
+        head_object_name=head_object_name,
+        extra_mesh_names=extra_mesh_names,
     )
 
 
@@ -51,7 +55,10 @@ def main() -> None:
     parser.add_argument("--view-scale", type=float, default=DEFAULT_VIEW_SCALE, help="Larger = bigger face (meter-scale / MetaHuman)")
     parser.add_argument("--window-width", type=int, default=DEFAULT_OPEN3D_WIDTH, help="Viewer window width (pixels)")
     parser.add_argument("--window-height", type=int, default=DEFAULT_OPEN3D_HEIGHT, help="Viewer window height (pixels)")
+    parser.add_argument("--head", type=str, default=None, help="Face mesh object name in FBX (custom ARKit avatar)")
+    parser.add_argument("--extra-meshes", type=str, default=None, help="Comma-separated meshes to merge (teeth, hair, …)")
     args = parser.parse_args()
+    extra = parse_extra_mesh_names(args.extra_meshes)
 
     if args.path:
         play_sequence(
@@ -63,6 +70,8 @@ def main() -> None:
             view_scale=args.view_scale,
             window_width=args.window_width,
             window_height=args.window_height,
+            head_object_name=args.head,
+            extra_mesh_names=extra,
         )
     else:
         preview_all_shapes(
@@ -72,6 +81,8 @@ def main() -> None:
             view_scale=args.view_scale,
             window_width=args.window_width,
             window_height=args.window_height,
+            head_object_name=args.head,
+            extra_mesh_names=extra,
         )
 
 

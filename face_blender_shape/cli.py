@@ -17,6 +17,12 @@ from face_blender_shape.constants import (
 from face_blender_shape.io import load_blendshape_csv, save_keypoints_npz
 
 
+def parse_extra_mesh_names(s: str | None) -> tuple[str, ...] | None:
+    if s is None or not str(s).strip():
+        return None
+    return tuple(x.strip() for x in str(s).split(",") if x.strip())
+
+
 def preview_sequence(
     path: str | Path,
     fps: float = DEFAULT_PLAYBACK_FPS,
@@ -27,6 +33,8 @@ def preview_sequence(
     view_scale: float = DEFAULT_VIEW_SCALE,
     window_width: int = DEFAULT_OPEN3D_WIDTH,
     window_height: int = DEFAULT_OPEN3D_HEIGHT,
+    head_object_name: str | None = None,
+    extra_mesh_names: tuple[str, ...] | None = None,
 ) -> None:
     data = load_blendshape_csv(path)
     runtime = FaceBlenderRuntime(
@@ -37,6 +45,8 @@ def preview_sequence(
         view_scale=view_scale,
         window_width=window_width,
         window_height=window_height,
+        head_object_name=head_object_name,
+        extra_mesh_names=extra_mesh_names,
     )
     frame_delay = 1.0 / fps if fps > 0 else 0.0
 
@@ -55,6 +65,8 @@ def preview_all_shapes(
     view_scale: float = DEFAULT_VIEW_SCALE,
     window_width: int = DEFAULT_OPEN3D_WIDTH,
     window_height: int = DEFAULT_OPEN3D_HEIGHT,
+    head_object_name: str | None = None,
+    extra_mesh_names: tuple[str, ...] | None = None,
 ) -> None:
     runtime = FaceBlenderRuntime(
         path=fbx_path,
@@ -64,6 +76,8 @@ def preview_all_shapes(
         view_scale=view_scale,
         window_width=window_width,
         window_height=window_height,
+        head_object_name=head_object_name,
+        extra_mesh_names=extra_mesh_names,
     )
     for value in np.linspace(0.0, 1.0, 100):
         print(value)
@@ -76,9 +90,18 @@ def convert_csv_to_keypoints(
     output_path: str | Path | None = None,
     fbx_path: str | None = None,
     visualize: bool = False,
+    model: str = "sranipal",
+    head_object_name: str | None = None,
+    extra_mesh_names: tuple[str, ...] | None = None,
 ) -> Path:
     data = load_blendshape_csv(path)
-    runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=visualize)
+    runtime = FaceBlenderRuntime(
+        path=fbx_path,
+        enable_viewer=visualize,
+        model=model,
+        head_object_name=head_object_name,
+        extra_mesh_names=extra_mesh_names,
+    )
 
     vertices_frames = []
     lip_frames = []
@@ -135,6 +158,18 @@ def build_parser() -> argparse.ArgumentParser:
     preview_parser.add_argument("--view-scale", type=float, default=DEFAULT_VIEW_SCALE, help="Closer framing for meter-scale models (MetaHuman); larger = bigger face")
     preview_parser.add_argument("--window-width", type=int, default=DEFAULT_OPEN3D_WIDTH, help="Viewer window width in pixels")
     preview_parser.add_argument("--window-height", type=int, default=DEFAULT_OPEN3D_HEIGHT, help="Viewer window height in pixels")
+    preview_parser.add_argument(
+        "--head",
+        type=str,
+        default=None,
+        help="Face mesh object name inside FBX (metahuman / custom ARKit; default: bundled MetaHuman or Head)",
+    )
+    preview_parser.add_argument(
+        "--extra-meshes",
+        type=str,
+        default=None,
+        help='Comma-separated mesh names to merge for preview (e.g. teeth,eyes,hair). See docs/custom-digital-human.md',
+    )
     preview_parser.set_defaults(handler=handle_preview_command)
 
     convert_parser = subparsers.add_parser("convert", help="Convert a blendshape CSV into NPZ keypoints")
@@ -142,12 +177,16 @@ def build_parser() -> argparse.ArgumentParser:
     convert_parser.add_argument("--output", type=str, help="Output NPZ path")
     convert_parser.add_argument("--fbx", type=str, help="Override FBX path")
     convert_parser.add_argument("--visualize", action="store_true", help="Render while converting")
+    convert_parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"])
+    convert_parser.add_argument("--head", type=str, default=None, help="Face mesh object name (see preview --head)")
+    convert_parser.add_argument("--extra-meshes", type=str, default=None, help="Comma-separated extra meshes (see preview)")
     convert_parser.set_defaults(handler=handle_convert_command)
 
     return parser
 
 
 def handle_preview_command(args: argparse.Namespace) -> int:
+    extra = parse_extra_mesh_names(getattr(args, "extra_meshes", None))
     if args.path:
         preview_sequence(
             args.path,
@@ -158,6 +197,8 @@ def handle_preview_command(args: argparse.Namespace) -> int:
             view_scale=args.view_scale,
             window_width=args.window_width,
             window_height=args.window_height,
+            head_object_name=args.head,
+            extra_mesh_names=extra,
         )
     else:
         preview_all_shapes(
@@ -167,12 +208,22 @@ def handle_preview_command(args: argparse.Namespace) -> int:
             view_scale=args.view_scale,
             window_width=args.window_width,
             window_height=args.window_height,
+            head_object_name=args.head,
+            extra_mesh_names=extra,
         )
     return 0
 
 
 def handle_convert_command(args: argparse.Namespace) -> int:
-    convert_csv_to_keypoints(args.path, output_path=args.output, fbx_path=args.fbx, visualize=args.visualize)
+    convert_csv_to_keypoints(
+        args.path,
+        output_path=args.output,
+        fbx_path=args.fbx,
+        visualize=args.visualize,
+        model=args.model,
+        head_object_name=args.head,
+        extra_mesh_names=parse_extra_mesh_names(getattr(args, "extra_meshes", None)),
+    )
     return 0
 
 

@@ -50,6 +50,10 @@ DEFAULT_OPEN3D_HEIGHT = 900
 DEFAULT_OPEN3D_BACKGROUND_RGB = (0.86, 0.89, 0.93)
 # >1.0 darkens bright albedo (less “plastic shine” under Open3D’s fixed lighting).
 DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA = 1.14
+# Bake soft diffuse into vertex colors and turn off scene lights (reduces plastic specular).
+DEFAULT_OPEN3D_BAKED_SHADING = True
+DEFAULT_OPEN3D_BAKED_AMBIENT = 0.30
+DEFAULT_OPEN3D_BAKED_DIFFUSE = 0.70
 # >1 pulls the camera closer (face fills more of the window). See Open3D ViewControl.set_zoom.
 DEFAULT_VIEW_SCALE = 2.2
 DEFAULT_HEAD_OBJECT_NAME = "Head"

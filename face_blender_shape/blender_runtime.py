@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import bpy
 import bmesh
 import numpy as np
@@ -57,8 +59,14 @@ class FaceBlenderRuntime:
         head_object_name: str | None = None,
         texture_path: str | None = None,
         model: str = "sranipal",
+        extra_mesh_names: Sequence[str] | None = None,
     ) -> None:
         self._model = model
+        self._extra_mesh_names = (
+            tuple(n.strip() for n in extra_mesh_names if n.strip())
+            if extra_mesh_names is not None
+            else None
+        )
 
         if model == "metahuman":
             from face_blender_shape.blendshape_mapping import (
@@ -79,17 +87,36 @@ class FaceBlenderRuntime:
         self.set_active_object(head_object_name)
 
         if model == "metahuman":
-            self._teeth_obj = bpy.data.objects.get(METAHUMAN_TEETH_OBJECT_NAME)
-            self._eye_left_obj = bpy.data.objects.get(METAHUMAN_EYE_LEFT_OBJECT_NAME)
-            self._eye_right_obj = bpy.data.objects.get(METAHUMAN_EYE_RIGHT_OBJECT_NAME)
-            self._append_parts = (self._teeth_obj, self._eye_left_obj, self._eye_right_obj)
+            if self._extra_mesh_names is not None:
+                parts: list = []
+                for n in self._extra_mesh_names:
+                    ob = bpy.data.objects.get(n)
+                    if ob is None:
+                        print(f"[face_blender_shape] warning: extra mesh {n!r} not found in FBX")
+                    elif ob.type != "MESH":
+                        print(f"[face_blender_shape] warning: {n!r} is not a mesh, skipped")
+                    else:
+                        parts.append(ob)
+                self._append_parts = tuple(parts)
+            else:
+                self._append_parts = (
+                    bpy.data.objects.get(METAHUMAN_TEETH_OBJECT_NAME),
+                    bpy.data.objects.get(METAHUMAN_EYE_LEFT_OBJECT_NAME),
+                    bpy.data.objects.get(METAHUMAN_EYE_RIGHT_OBJECT_NAME),
+                )
         else:
-            self._teeth_obj = None
-            self._eye_left_obj = bpy.data.objects.get(SRANIPAL_EYE_LEFT_OBJECT_NAME)
-            self._eye_right_obj = bpy.data.objects.get(SRANIPAL_EYE_RIGHT_OBJECT_NAME)
-            self._append_parts = (self._eye_left_obj, self._eye_right_obj)
+            self._append_parts = (
+                bpy.data.objects.get(SRANIPAL_EYE_LEFT_OBJECT_NAME),
+                bpy.data.objects.get(SRANIPAL_EYE_RIGHT_OBJECT_NAME),
+            )
 
-        if model == "metahuman" and texture_path is None:
+        # Bundled MetaHuman FBX has no usable embedded albedo; custom ARKit avatars often do.
+        skip_auto_texture = (
+            model == "metahuman"
+            and texture_path is None
+            and self._extra_mesh_names is None
+        )
+        if skip_auto_texture:
             self._texture_image = None
         else:
             self._texture_image = self._load_texture(texture_path)
@@ -258,30 +285,18 @@ class FaceBlenderRuntime:
             if name in key_blocks:
                 key_blocks[name].value = float(value)
 
-    def _apply_teeth_shapes(self, arkit_values: np.ndarray) -> None:
-        """Mirror jaw/mouth shapes onto the teeth object."""
-        if self._teeth_obj is None:
-            return
-        teeth_keys = self._teeth_obj.data.shape_keys
-        if teeth_keys is None:
-            return
-        key_blocks = teeth_keys.key_blocks
-        for name, value in zip(self._arkit_names, arkit_values):
-            if name in key_blocks:
-                key_blocks[name].value = float(value)
-
-    def _apply_eye_shapes(self, arkit_values: np.ndarray) -> None:
-        """Apply ARKit eye-look blendshapes on left/right eyeball meshes."""
-        for eye_obj in (self._eye_left_obj, self._eye_right_obj):
-            if eye_obj is None:
+    def _apply_arkit_to_secondary_meshes(self, arkit_values: np.ndarray) -> None:
+        """Drive any ARKit shape keys present on teeth, eyes, hair, etc."""
+        for obj in self._append_parts:
+            if obj is None:
                 continue
-            sk = eye_obj.data.shape_keys
+            sk = obj.data.shape_keys
             if sk is None:
                 continue
-            key_blocks = sk.key_blocks
+            kbs = sk.key_blocks
             for name, value in zip(self._arkit_names, arkit_values):
-                if name in key_blocks:
-                    key_blocks[name].value = float(value)
+                if name in kbs:
+                    kbs[name].value = float(value)
 
     @staticmethod
     def _principled_base_color_rgb(mat) -> np.ndarray:
@@ -397,8 +412,7 @@ class FaceBlenderRuntime:
         if self._model == "metahuman":
             arkit_values = self._convert_frame(frame)
             self._apply_arkit_shapes(arkit_values)
-            self._apply_teeth_shapes(arkit_values)
-            self._apply_eye_shapes(arkit_values)
+            self._apply_arkit_to_secondary_meshes(arkit_values)
         else:
             for heading, value in zip(self.blendshape_names, frame):
                 self.active_obj.data.shape_keys.key_blocks[heading].value = float(value)

@@ -5,6 +5,9 @@ import open3d as o3d
 
 from face_blender_shape.constants import (
     DEFAULT_OPEN3D_BACKGROUND_RGB,
+    DEFAULT_OPEN3D_BAKED_AMBIENT,
+    DEFAULT_OPEN3D_BAKED_DIFFUSE,
+    DEFAULT_OPEN3D_BAKED_SHADING,
     DEFAULT_OPEN3D_HEIGHT,
     DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA,
     DEFAULT_OPEN3D_WINDOW_NAME,
@@ -41,6 +44,9 @@ class Open3DMeshViewer:
         self._mesh: o3d.geometry.TriangleMesh | None = None
         self._camera_initialized = False
         self._matte_gamma = float(DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA)
+        self._baked_shading = bool(DEFAULT_OPEN3D_BAKED_SHADING)
+        self._baked_ambient = float(DEFAULT_OPEN3D_BAKED_AMBIENT)
+        self._baked_diffuse = float(DEFAULT_OPEN3D_BAKED_DIFFUSE)
         self._apply_friendly_render_settings()
 
     def _apply_friendly_render_settings(self) -> None:
@@ -49,7 +55,8 @@ class Open3DMeshViewer:
         ro.mesh_color_option = o3d.visualization.MeshColorOption.Color
         ro.mesh_shade_option = o3d.visualization.MeshShadeOption.Color
         ro.background_color = np.asarray(DEFAULT_OPEN3D_BACKGROUND_RGB, dtype=np.float64)
-        ro.light_on = True
+        # Baked shading uses vertex colors as final display color; scene lights add plastic specular.
+        ro.light_on = not self._baked_shading
         ro.mesh_show_wireframe = False
         ro.show_coordinate_frame = False
 
@@ -85,6 +92,43 @@ class Open3DMeshViewer:
         x = np.clip(np.asarray(colors, dtype=np.float64), 0.0, 1.0)
         return np.clip(np.power(x, self._matte_gamma), 0.0, 1.0)
 
+    def _light_dir_for_mesh(self, vertices: np.ndarray) -> np.ndarray:
+        """Approximate key light direction in world space (matches Z-up vs Y-up heuristics)."""
+        extent = vertices.max(axis=0) - vertices.min(axis=0)
+        if float(extent[2]) > float(extent[1]):
+            # Z-up (e.g. MetaHuman): light from upper-front
+            L = np.array([0.28, 0.62, 0.74], dtype=np.float64)
+        else:
+            # Y-up (e.g. SRanipal): face toward +Z
+            L = np.array([0.38, 0.72, 0.58], dtype=np.float64)
+        L /= np.linalg.norm(L) + 1e-9
+        return L
+
+    def _bake_half_lambert_shading(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        albedo: np.ndarray,
+    ) -> np.ndarray:
+        """Half-Lambert + tiny warm fill in shadows — reads more like skin than flat + spec spike."""
+        tmp = o3d.geometry.TriangleMesh()
+        tmp.vertices = o3d.utility.Vector3dVector(vertices)
+        tmp.triangles = o3d.utility.Vector3iVector(faces)
+        tmp.compute_vertex_normals()
+        n = np.asarray(tmp.vertex_normals, dtype=np.float64)
+        L = self._light_dir_for_mesh(vertices)
+        nd = (n * L).sum(axis=1, keepdims=True)
+        half = np.clip(0.5 * nd + 0.5, 0.0, 1.0)
+        lit = self._baked_ambient + self._baked_diffuse * half
+        rgb = np.clip(np.asarray(albedo, dtype=np.float64), 0.0, 1.0) * lit
+        # Slight warmth in shadow (very subtle SSS hint)
+        shadow = np.clip(1.0 - lit, 0.0, 1.0)
+        warm = np.concatenate(
+            [0.04 * shadow, 0.015 * shadow, 0.012 * shadow],
+            axis=1,
+        )
+        return np.clip(rgb + warm, 0.0, 1.0)
+
     def update(
         self,
         vertices: np.ndarray,
@@ -96,6 +140,9 @@ class Open3DMeshViewer:
             display_colors = self._matte_vertex_colors(vertex_colors)
         else:
             display_colors = self._matte_vertex_colors(np.tile(SKIN_TONE, (len(vertices), 1)))
+
+        if self._baked_shading and len(vertices) > 0 and len(faces) > 0:
+            display_colors = self._bake_half_lambert_shading(vertices, faces, display_colors)
 
         if self._mesh is None:
             self._mesh = o3d.geometry.TriangleMesh()
