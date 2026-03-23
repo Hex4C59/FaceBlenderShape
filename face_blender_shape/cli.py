@@ -7,7 +7,13 @@ from pathlib import Path
 import numpy as np
 
 from face_blender_shape.blender_runtime import FaceBlenderRuntime
-from face_blender_shape.constants import DEFAULT_PLAYBACK_FPS, FRAME_WIDTH
+from face_blender_shape.constants import (
+    DEFAULT_OPEN3D_HEIGHT,
+    DEFAULT_OPEN3D_WIDTH,
+    DEFAULT_PLAYBACK_FPS,
+    DEFAULT_VIEW_SCALE,
+    FRAME_WIDTH,
+)
 from face_blender_shape.io import load_blendshape_csv, save_keypoints_npz
 
 
@@ -18,9 +24,20 @@ def preview_sequence(
     fbx_path: str | None = None,
     texture_path: str | None = None,
     model: str = "sranipal",
+    view_scale: float = DEFAULT_VIEW_SCALE,
+    window_width: int = DEFAULT_OPEN3D_WIDTH,
+    window_height: int = DEFAULT_OPEN3D_HEIGHT,
 ) -> None:
     data = load_blendshape_csv(path)
-    runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=True, texture_path=texture_path, model=model)
+    runtime = FaceBlenderRuntime(
+        path=fbx_path,
+        enable_viewer=True,
+        texture_path=texture_path,
+        model=model,
+        view_scale=view_scale,
+        window_width=window_width,
+        window_height=window_height,
+    )
     frame_delay = 1.0 / fps if fps > 0 else 0.0
 
     for idx, blendshapes in enumerate(data, start=1):
@@ -30,8 +47,24 @@ def preview_sequence(
             time.sleep(frame_delay)
 
 
-def preview_all_shapes(*, fbx_path: str | None = None, texture_path: str | None = None, model: str = "sranipal") -> None:
-    runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=True, texture_path=texture_path, model=model)
+def preview_all_shapes(
+    *,
+    fbx_path: str | None = None,
+    texture_path: str | None = None,
+    model: str = "sranipal",
+    view_scale: float = DEFAULT_VIEW_SCALE,
+    window_width: int = DEFAULT_OPEN3D_WIDTH,
+    window_height: int = DEFAULT_OPEN3D_HEIGHT,
+) -> None:
+    runtime = FaceBlenderRuntime(
+        path=fbx_path,
+        enable_viewer=True,
+        texture_path=texture_path,
+        model=model,
+        view_scale=view_scale,
+        window_width=window_width,
+        window_height=window_height,
+    )
     for value in np.linspace(0.0, 1.0, 100):
         print(value)
         runtime.update_visualizer(np.ones(FRAME_WIDTH) * value)
@@ -65,7 +98,11 @@ def convert_csv_to_keypoints(
         if faces is None:
             faces = frame["faces"]
         if visualize:
-            runtime.render(frame["vertices"], frame["faces"])
+            runtime.render(
+                frame["vertices"],
+                frame["faces"],
+                vertex_colors=frame.get("vertex_colors"),
+            )
 
     if faces is None:
         raise RuntimeError("No frames were extracted from the input CSV")
@@ -95,6 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
     preview_parser.add_argument("--fbx", type=str, help="Override FBX path")
     preview_parser.add_argument("--texture", type=str, help="Skin texture image path (auto-detects from assets/textures/)")
     preview_parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"], help="Model backend (default: sranipal)")
+    preview_parser.add_argument("--view-scale", type=float, default=DEFAULT_VIEW_SCALE, help="Closer framing for meter-scale models (MetaHuman); larger = bigger face")
+    preview_parser.add_argument("--window-width", type=int, default=DEFAULT_OPEN3D_WIDTH, help="Viewer window width in pixels")
+    preview_parser.add_argument("--window-height", type=int, default=DEFAULT_OPEN3D_HEIGHT, help="Viewer window height in pixels")
     preview_parser.set_defaults(handler=handle_preview_command)
 
     convert_parser = subparsers.add_parser("convert", help="Convert a blendshape CSV into NPZ keypoints")
@@ -109,9 +149,25 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_preview_command(args: argparse.Namespace) -> int:
     if args.path:
-        preview_sequence(args.path, args.fps, fbx_path=args.fbx, texture_path=args.texture, model=args.model)
+        preview_sequence(
+            args.path,
+            args.fps,
+            fbx_path=args.fbx,
+            texture_path=args.texture,
+            model=args.model,
+            view_scale=args.view_scale,
+            window_width=args.window_width,
+            window_height=args.window_height,
+        )
     else:
-        preview_all_shapes(fbx_path=args.fbx, texture_path=args.texture, model=args.model)
+        preview_all_shapes(
+            fbx_path=args.fbx,
+            texture_path=args.texture,
+            model=args.model,
+            view_scale=args.view_scale,
+            window_width=args.window_width,
+            window_height=args.window_height,
+        )
     return 0
 
 

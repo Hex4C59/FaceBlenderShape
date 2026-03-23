@@ -86,6 +86,22 @@ uv run face-blender-shape preview --path data/examples/sample_data.csv
 
 <img src="docs/assets/facevis.gif" alt="drawing" width="200" height="320"/>
 
+### 默认头模为什么看起来「不像真人」？
+
+默认的 **SRanipal 头**（`assets/models/sranipal_head.fbx`）是为 **面部追踪实时性能** 做的低面数模型：网格棱角明显、细节少；眼睛区域往往是简化几何 + 顶点色，不会像照片级角色。这是设计取舍，不是渲染 bug。
+
+### 更接近真人的头模（推荐）
+
+本仓库已包含 **MetaHuman 风格、带 52 个 ARKit blendshape** 的高面数头部（`assets/models/Metahuman_Head.fbx`，约 2.4 万顶点，含牙齿与眼球子网格）。用 **SRanipal 的 37 维 CSV** 仍可驱动，内部会做 **SRanipal → ARKit** 映射：
+
+```bash
+uv run --no-sync python blender_interface.py --model metahuman --path data/examples/sample_data.csv --fps 15
+```
+
+需要更大脸部占比时可调 `--view-scale`（例如 `3.0`）和窗口大小，见脚本 `--help`。
+
+**说明**：再往上要「照片级真人」，通常要在 Blender / UE 里换 **高精度扫描或 Metahuman 完整流程**（皮肤纹理、毛发、眼球折射等）。任意好看的头模若要接 Vive 数据，仍需 **与 SRanipal 或 ARKit 等 blendshape 命名兼容**，否则要自己重做映射或重定向。
+
 ## Blender Shape 转关键点
 
 使用兼容脚本：

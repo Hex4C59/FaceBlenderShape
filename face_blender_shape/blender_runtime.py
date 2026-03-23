@@ -3,14 +3,22 @@ from __future__ import annotations
 import bpy
 import bmesh
 import numpy as np
+from mathutils import Vector
 
 from face_blender_shape.constants import (
     BLENDSHAPE_NAMES,
     DEFAULT_HEAD_OBJECT_NAME,
+    DEFAULT_OPEN3D_HEIGHT,
+    DEFAULT_OPEN3D_WIDTH,
     DEFAULT_OPEN3D_WINDOW_NAME,
+    DEFAULT_VIEW_SCALE,
     FRAME_WIDTH,
+    METAHUMAN_EYE_LEFT_OBJECT_NAME,
+    METAHUMAN_EYE_RIGHT_OBJECT_NAME,
     METAHUMAN_HEAD_OBJECT_NAME,
     METAHUMAN_TEETH_OBJECT_NAME,
+    SRANIPAL_EYE_LEFT_OBJECT_NAME,
+    SRANIPAL_EYE_RIGHT_OBJECT_NAME,
 )
 from face_blender_shape.landmarks import (
     extract_default_landmarks,
@@ -25,7 +33,7 @@ from face_blender_shape.paths import (
     resolve_fbx_path,
     resolve_texture_path,
 )
-from face_blender_shape.viewers.open3d_viewer import Open3DMeshViewer
+from face_blender_shape.viewers.open3d_viewer import Open3DMeshViewer, SKIN_TONE
 
 
 class FaceBlenderRuntime:
@@ -43,6 +51,9 @@ class FaceBlenderRuntime:
         *,
         enable_viewer: bool = True,
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
+        window_width: int = DEFAULT_OPEN3D_WIDTH,
+        window_height: int = DEFAULT_OPEN3D_HEIGHT,
+        view_scale: float = DEFAULT_VIEW_SCALE,
         head_object_name: str | None = None,
         texture_path: str | None = None,
         model: str = "sranipal",
@@ -69,8 +80,14 @@ class FaceBlenderRuntime:
 
         if model == "metahuman":
             self._teeth_obj = bpy.data.objects.get(METAHUMAN_TEETH_OBJECT_NAME)
+            self._eye_left_obj = bpy.data.objects.get(METAHUMAN_EYE_LEFT_OBJECT_NAME)
+            self._eye_right_obj = bpy.data.objects.get(METAHUMAN_EYE_RIGHT_OBJECT_NAME)
+            self._append_parts = (self._teeth_obj, self._eye_left_obj, self._eye_right_obj)
         else:
             self._teeth_obj = None
+            self._eye_left_obj = bpy.data.objects.get(SRANIPAL_EYE_LEFT_OBJECT_NAME)
+            self._eye_right_obj = bpy.data.objects.get(SRANIPAL_EYE_RIGHT_OBJECT_NAME)
+            self._append_parts = (self._eye_left_obj, self._eye_right_obj)
 
         if model == "metahuman" and texture_path is None:
             self._texture_image = None
@@ -80,7 +97,12 @@ class FaceBlenderRuntime:
         self._vertex_colors: np.ndarray | None = None
 
         self.viewer = (
-            Open3DMeshViewer(window_name=window_name)
+            Open3DMeshViewer(
+                window_name=window_name,
+                view_scale=view_scale,
+                window_width=window_width,
+                window_height=window_height,
+            )
             if enable_viewer
             else None
         )
@@ -193,6 +215,20 @@ class FaceBlenderRuntime:
                 self._texture_image, self._triangle_uvs, faces, n_vertices,
             )
 
+    def _ensure_head_vertex_colors_baked(self, head_obj) -> None:
+        """Bake head-only vertex colors when extra meshes are merged (UVs match head faces only)."""
+        if self._vertex_colors is not None:
+            return
+        if self._texture_image is None or self._triangle_uvs is None:
+            return
+        h_verts, h_faces = self.get_mesh_data(head_obj)
+        self._vertex_colors = self._bake_vertex_colors(
+            self._texture_image,
+            self._triangle_uvs,
+            h_faces,
+            len(h_verts),
+        )
+
     # ------------------------------------------------------------------
     # UV extraction
     # ------------------------------------------------------------------
@@ -234,6 +270,121 @@ class FaceBlenderRuntime:
             if name in key_blocks:
                 key_blocks[name].value = float(value)
 
+    def _apply_eye_shapes(self, arkit_values: np.ndarray) -> None:
+        """Apply ARKit eye-look blendshapes on left/right eyeball meshes."""
+        for eye_obj in (self._eye_left_obj, self._eye_right_obj):
+            if eye_obj is None:
+                continue
+            sk = eye_obj.data.shape_keys
+            if sk is None:
+                continue
+            key_blocks = sk.key_blocks
+            for name, value in zip(self._arkit_names, arkit_values):
+                if name in key_blocks:
+                    key_blocks[name].value = float(value)
+
+    @staticmethod
+    def _principled_base_color_rgb(mat) -> np.ndarray:
+        """Read Principled BSDF default base color (no texture sampling)."""
+        if mat is None or not getattr(mat, "use_nodes", False):
+            return np.array([0.85, 0.85, 0.88], dtype=np.float64)
+        try:
+            for node in mat.node_tree.nodes:
+                if node.type == "BSDF_PRINCIPLED":
+                    bc = node.inputs["Base Color"].default_value
+                    return np.clip(np.array(bc[:3], dtype=np.float64), 0.0, 1.0)
+        except (AttributeError, KeyError, TypeError):
+            pass
+        return np.array([0.85, 0.85, 0.88], dtype=np.float64)
+
+    @classmethod
+    def _mesh_vertex_colors_from_materials(cls, mesh, materials) -> np.ndarray:
+        """Average material base color at each vertex from polygon material slots.
+
+        *materials* should be the source object's ``data.materials``; meshes built via
+        ``bmesh.to_mesh`` keep polygon ``material_index`` but often have an empty
+        ``mesh.materials`` list.
+        """
+        n = len(mesh.vertices)
+        acc = np.zeros((n, 3), dtype=np.float64)
+        counts = np.zeros(n, dtype=np.float64)
+        mats = materials
+        for poly in mesh.polygons:
+            if mats and len(mats) > 0:
+                mid = min(int(poly.material_index), len(mats) - 1)
+                mat = mats[mid]
+            else:
+                mat = None
+            rgb = cls._principled_base_color_rgb(mat)
+            for vi in poly.vertices:
+                acc[vi] += rgb
+                counts[vi] += 1.0
+        counts = np.maximum(counts, 1.0)
+        return acc / counts[:, None]
+
+    @classmethod
+    def _material_rgb_for_eye_viewport(cls, mat) -> np.ndarray:
+        """Principled base color, tuned so iris/pupil stay visible under flat Open3D shading."""
+        rgb = cls._principled_base_color_rgb(mat)
+        if mat is None:
+            return rgb
+        name = (mat.name or "").lower()
+        if "pupil" in name:
+            return np.clip(rgb, 0.0, 1.0)
+        if "iris" in name:
+            # Slightly richer brown so the limbus reads in vertex-color mode
+            return np.clip(rgb * np.array([1.05, 1.02, 1.0], dtype=np.float64), 0.0, 1.0)
+        # Sclera / catch-all light greys → soft blue-white (still reads as eyeball, not skin)
+        if float(rgb.mean()) >= 0.45:
+            return np.array([0.92, 0.93, 0.96], dtype=np.float64)
+        return rgb
+
+    @classmethod
+    def _mesh_vertex_colors_dominant_material(cls, mesh, materials) -> np.ndarray:
+        """Pick one material per vertex by adjacent triangle area (fixes shared-vert averaging).
+
+        Eye meshes reuse vertices between sclera / iris / pupil; averaging washes out the iris.
+        """
+        from collections import defaultdict
+
+        verts = mesh.vertices
+        n = len(verts)
+        mats = materials
+        wby = [defaultdict(float) for _ in range(n)]
+
+        for poly in mesh.polygons:
+            vids = list(poly.vertices)
+            if len(vids) < 3:
+                continue
+            if mats and len(mats) > 0:
+                mid = min(int(poly.material_index), len(mats) - 1)
+            else:
+                mid = -1
+            c0 = Vector(verts[vids[0]].co)
+            c1 = Vector(verts[vids[1]].co)
+            c2 = Vector(verts[vids[2]].co)
+            area = (c1 - c0).cross(c2 - c0).length / 2.0
+            for vi in poly.vertices:
+                wby[vi][mid] += float(area)
+
+        out = np.zeros((n, 3), dtype=np.float64)
+        for i in range(n):
+            weights = wby[i]
+            if not weights:
+                out[i] = cls._material_rgb_for_eye_viewport(None)
+                continue
+            best_mid = max(weights.items(), key=lambda kv: kv[1])[0]
+            if best_mid < 0 or best_mid >= len(mats):
+                mat = None
+            else:
+                mat = mats[best_mid]
+            out[i] = cls._material_rgb_for_eye_viewport(mat)
+        return out
+
+    @staticmethod
+    def _is_eye_mesh_object(obj) -> bool:
+        return bool(obj and obj.name and "eye" in obj.name.lower())
+
     def set_blendshapes(self, blendshapes: np.ndarray | list[float]):
         frame = self._validate_frame(blendshapes)
         bpy.context.view_layer.objects.active = self.active_obj
@@ -243,6 +394,7 @@ class FaceBlenderRuntime:
             arkit_values = self._convert_frame(frame)
             self._apply_arkit_shapes(arkit_values)
             self._apply_teeth_shapes(arkit_values)
+            self._apply_eye_shapes(arkit_values)
         else:
             for heading, value in zip(self.blendshape_names, frame):
                 self.active_obj.data.shape_keys.key_blocks[heading].value = float(value)
@@ -270,21 +422,52 @@ class FaceBlenderRuntime:
         bm.free()
         return mesh
 
-    def _get_combined_mesh_data(self, head_obj) -> tuple[np.ndarray, np.ndarray]:
-        """Get head + teeth mesh data combined for MetaHuman rendering."""
+    def _has_extra_meshes_for_view(self) -> bool:
+        return any(p is not None for p in self._append_parts)
+
+    def _get_combined_mesh_data(self, head_obj) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Head + optional teeth / eyeballs; per-vertex RGB in [0, 1] for Open3D."""
+        self._ensure_head_vertex_colors_baked(head_obj)
         h_verts, h_faces = self.get_mesh_data(head_obj)
-        if self._teeth_obj is None:
-            return h_verts, h_faces
+        h_n = len(h_verts)
+        if self._vertex_colors is not None and len(self._vertex_colors) == h_n:
+            head_cols = np.asarray(self._vertex_colors, dtype=np.float64)
+        else:
+            head_cols = np.tile(np.asarray(SKIN_TONE, dtype=np.float64), (h_n, 1))
 
-        teeth_mesh = self.get_modified_mesh(self._teeth_obj)
-        t_verts = np.array([tuple(v.co) for v in teeth_mesh.vertices], dtype=float)
-        t_faces = np.array([tuple(p.vertices) for p in teeth_mesh.polygons], dtype=int)
-        bpy.data.meshes.remove(teeth_mesh)
+        verts_list = [h_verts]
+        faces_list = [h_faces]
+        colors_list = [head_cols]
+        offset = h_n
 
-        offset = len(h_verts)
-        combined_verts = np.concatenate([h_verts, t_verts], axis=0)
-        combined_faces = np.concatenate([h_faces, t_faces + offset], axis=0)
-        return combined_verts, combined_faces
+        for part_obj in self._append_parts:
+            if part_obj is None:
+                continue
+            part_mesh = self.get_modified_mesh(part_obj)
+            try:
+                slot_mats = part_obj.data.materials
+                if self._is_eye_mesh_object(part_obj):
+                    vcols = self._mesh_vertex_colors_dominant_material(part_mesh, slot_mats)
+                else:
+                    vcols = self._mesh_vertex_colors_from_materials(part_mesh, slot_mats)
+                p_verts = np.array([tuple(v.co) for v in part_mesh.vertices], dtype=float)
+                p_faces = np.array([tuple(p.vertices) for p in part_mesh.polygons], dtype=int)
+            finally:
+                bpy.data.meshes.remove(part_mesh)
+
+            if len(vcols) != len(p_verts):
+                vcols = np.tile(np.asarray(SKIN_TONE, dtype=np.float64), (len(p_verts), 1))
+
+            verts_list.append(p_verts)
+            faces_list.append(p_faces + offset)
+            colors_list.append(vcols)
+            offset += len(p_verts)
+
+        return (
+            np.concatenate(verts_list, axis=0),
+            np.concatenate(faces_list, axis=0),
+            np.concatenate(colors_list, axis=0),
+        )
 
     @staticmethod
     def get_mesh_data(obj) -> tuple[np.ndarray, np.ndarray]:
@@ -295,23 +478,41 @@ class FaceBlenderRuntime:
     def extract_frame(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:
         obj = self.set_blendshapes(blendshapes)
 
-        if self._model == "metahuman":
-            vertices, faces = self._get_combined_mesh_data(obj)
-        else:
-            vertices, faces = self.get_mesh_data(obj)
+        if self._has_extra_meshes_for_view():
+            vertices, faces, vcols = self._get_combined_mesh_data(obj)
+            landmarks = extract_default_landmarks(vertices)
+            return {
+                "vertices": vertices,
+                "faces": faces,
+                "vertex_colors": vcols,
+                **landmarks,
+            }
 
+        vertices, faces = self.get_mesh_data(obj)
         landmarks = extract_default_landmarks(vertices)
         return {"vertices": vertices, "faces": faces, **landmarks}
 
-    def render(self, vertices: np.ndarray, faces: np.ndarray) -> None:
+    def render(
+        self,
+        vertices: np.ndarray,
+        faces: np.ndarray,
+        *,
+        vertex_colors: np.ndarray | None = None,
+    ) -> None:
         if self.viewer is None:
             raise RuntimeError("Viewer is disabled for this runtime instance")
-        self._ensure_vertex_colors(faces, len(vertices))
-        self.viewer.update(vertices, faces, vertex_colors=self._vertex_colors)
+        if vertex_colors is None:
+            self._ensure_vertex_colors(faces, len(vertices))
+            vertex_colors = self._vertex_colors
+        self.viewer.update(vertices, faces, vertex_colors=vertex_colors)
 
     def update_visualizer(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:
         frame = self.extract_frame(blendshapes)
-        self.render(frame["vertices"], frame["faces"])
+        self.render(
+            frame["vertices"],
+            frame["faces"],
+            vertex_colors=frame.get("vertex_colors"),
+        )
         return frame
 
     set_key_shapes = set_blendshapes

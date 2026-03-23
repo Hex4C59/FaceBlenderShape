@@ -231,7 +231,7 @@ wheels = [
 [[package]]
 name = "face-blender-shape-python"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "addict" },
     { name = "attrs" },
