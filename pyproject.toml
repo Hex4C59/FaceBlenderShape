@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face-blender-shape-python"
+version = "0.1.0"
+description = "Visualize SRanipal Blender shapes and export face keypoints without Unity."
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "addict==2.4.0",
+    "attrs==24.2.0",
+    "blinker==1.8.2",
+    "bpy==4.0.0",
+    "certifi==2023.11.17",
+    "charset-normalizer==3.3.2",
+    "click==8.1.7",
+    "configargparse==1.7",
+    "contourpy==1.2.0",
+    "cycler==0.12.1",
+    "cython==3.0.7",
+    "dash==2.17.1",
+    "dash-core-components==2.0.0",
+    "dash-html-components==2.0.0",
+    "dash-table==5.0.0",
+    "fastjsonschema==2.20.0",
+    "flask==3.0.3",
+    "fonttools==4.47.0",
+    "idna==3.6",
+    "importlib-metadata==8.2.0",
+    "itsdangerous==2.2.0",
+    "jinja2==3.1.4",
+    "joblib==1.4.2",
+    "jsonschema==4.23.0",
+    "jsonschema-specifications==2023.12.1",
+    "jupyter-core==5.7.2",
+    "kiwisolver==1.4.5",
+    "markupsafe==2.1.5",
+    "matplotlib==3.8.2",
+    "nbformat==5.10.4",
+    "nest-asyncio==1.6.0",
+    "numpy==1.26.2",
+    "open3d==0.18.0",
+    "packaging==23.2",
+    "pandas==2.2.2",
+    "pillow==10.1.0",
+    "platformdirs==4.2.2",
+    "plotly==5.23.0",
+    "pyparsing==3.1.1",
+    "pyquaternion==0.9.9",
+    "python-dateutil==2.8.2",
+    "pytz==2024.1",
+    "pyyaml==6.0.2",
+    "referencing==0.35.1",
+    "requests==2.31.0",
+    "retrying==1.3.4",
+    "rpds-py==0.20.0",
+    "scikit-learn==1.5.1",
+    "scipy==1.14.0",
+    "six==1.16.0",
+    "tenacity==9.0.0",
+    "threadpoolctl==3.5.0",
+    "tqdm==4.66.1",
+    "traitlets==5.14.3",
+    "typing-extensions==4.12.2",
+    "tzdata==2024.1",
+    "urllib3==2.1.0",
+    "werkzeug==3.0.3",
+    "zipp==3.19.2",
+    "zstandard==0.22.0",
+]
+
+[project.scripts]
+face-blender-shape = "face_blender_shape.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["face_blender_shape*"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+bpy = { index = "blender-bpy" }
+
+[[tool.uv.index]]
+name = "blender-bpy"
+url = "https://download.blender.org/pypi/bpy/"
+format = "flat"
+explicit = true
