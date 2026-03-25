@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import numpy as np
+import yaml
 
 from face_blender_shape.blender_runtime import FaceBlenderRuntime
 from face_blender_shape.constants import (
@@ -12,36 +14,105 @@ from face_blender_shape.constants import (
     DEFAULT_OPEN3D_WIDTH,
     DEFAULT_PLAYBACK_FPS,
     DEFAULT_VIEW_SCALE,
-    FRAME_WIDTH,
 )
-from face_blender_shape.io import load_blendshape_csv, save_keypoints_npz
+from face_blender_shape.io import load_blendshape_csv
+
+# 默认预览配置文件名（相对当前工作目录）。
+DEFAULT_PREVIEW_CONFIG_NAME = "face_blender_preview.yaml"
+
+
+@dataclass
+class PreviewConfig:
+    """
+    从 YAML 读取的预览参数集合。
+    path: blendshape CSV 路径（必填）；每行一帧，列顺序与 SRanipal 37 维一致。
+    fps: 播放节奏；大于 0 时按 1/fps 秒休眠逐帧，否则不延时连续刷帧。
+    view_scale: Open3D 相机取景比例；数值越大脸在画面里越大，用于米级角色等场景。
+    window_width / window_height: 预览窗口宽高（像素）。
+    head: FBX 里承载 blendshape 的网格对象在 Blender 中的名称；null 时用 MetaHuman 默认头对象名。
+    extra_meshes: 除面部外还要合并进同屏预览的网格对象名列表（如牙齿、头发）；null 时默认牙齿与双眼。
+    """
+
+    path: str
+    fps: float
+    view_scale: float
+    window_width: int
+    window_height: int
+    head: str | None
+    extra_meshes: tuple[str, ...] | None
 
 
 def parse_extra_mesh_names(s: str | None) -> tuple[str, ...] | None:
+    """
+    解析逗号分隔的网格名字符串。
+    s: 原始字符串；空或仅空白则返回 None。
+    """
     if s is None or not str(s).strip():
         return None
     return tuple(x.strip() for x in str(s).split(",") if x.strip())
+
+
+def normalize_extra_meshes_yaml(value: Any) -> tuple[str, ...] | None:
+    """
+    将 YAML 中的 extra_meshes 转为网格名元组；空则返回 None。
+    value: YAML 中可为 list、逗号分隔字符串或 null。
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        t = tuple(str(x).strip() for x in value if str(x).strip())
+        return t if t else None
+    return parse_extra_mesh_names(str(value) if value else None)
+
+
+def load_preview_config(config_path: Path) -> PreviewConfig:
+    """
+    从 YAML 文件加载预览配置；缺省键使用与常量一致的默认值。
+    config_path: YAML 文件路径（建议为绝对路径或已基于 cwd 解析）。
+    """
+    if not config_path.is_file():
+        raise FileNotFoundError(f"配置文件不存在: {config_path}")
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError("配置文件顶层必须是 YAML 映射（键值对）")
+    path_val = raw.get("path")
+    path_out = None if path_val is None else str(path_val).strip() or None
+    if not path_out:
+        raise ValueError("配置中 path 必须为非空字符串，指向 blendshape CSV 文件")
+    head_val = raw.get("head")
+    head_out = None if head_val is None else str(head_val).strip() or None
+    return PreviewConfig(
+        path=path_out,
+        fps=float(raw.get("fps", DEFAULT_PLAYBACK_FPS)),
+        view_scale=float(raw.get("view_scale", DEFAULT_VIEW_SCALE)),
+        window_width=int(raw.get("window_width", DEFAULT_OPEN3D_WIDTH)),
+        window_height=int(raw.get("window_height", DEFAULT_OPEN3D_HEIGHT)),
+        head=head_out,
+        extra_meshes=normalize_extra_meshes_yaml(raw.get("extra_meshes")),
+    )
 
 
 def preview_sequence(
     path: str | Path,
     fps: float = DEFAULT_PLAYBACK_FPS,
     *,
-    fbx_path: str | None = None,
-    texture_path: str | None = None,
-    model: str = "sranipal",
     view_scale: float = DEFAULT_VIEW_SCALE,
     window_width: int = DEFAULT_OPEN3D_WIDTH,
     window_height: int = DEFAULT_OPEN3D_HEIGHT,
     head_object_name: str | None = None,
     extra_mesh_names: tuple[str, ...] | None = None,
 ) -> None:
+    """
+    按 CSV 序列逐帧驱动 Open3D 预览。
+    path: blendshape CSV 路径。
+    fps: 每帧间隔由 fps 推算；<=0 则不 sleep。
+    其余关键字参数含义与 FaceBlenderRuntime 一致。
+    """
     data = load_blendshape_csv(path)
     runtime = FaceBlenderRuntime(
-        path=fbx_path,
         enable_viewer=True,
-        texture_path=texture_path,
-        model=model,
         view_scale=view_scale,
         window_width=window_width,
         window_height=window_height,
@@ -57,186 +128,51 @@ def preview_sequence(
             time.sleep(frame_delay)
 
 
-def preview_all_shapes(
-    *,
-    fbx_path: str | None = None,
-    texture_path: str | None = None,
-    model: str = "sranipal",
-    view_scale: float = DEFAULT_VIEW_SCALE,
-    window_width: int = DEFAULT_OPEN3D_WIDTH,
-    window_height: int = DEFAULT_OPEN3D_HEIGHT,
-    head_object_name: str | None = None,
-    extra_mesh_names: tuple[str, ...] | None = None,
-) -> None:
-    runtime = FaceBlenderRuntime(
-        path=fbx_path,
-        enable_viewer=True,
-        texture_path=texture_path,
-        model=model,
-        view_scale=view_scale,
-        window_width=window_width,
-        window_height=window_height,
-        head_object_name=head_object_name,
-        extra_mesh_names=extra_mesh_names,
-    )
-    for value in np.linspace(0.0, 1.0, 100):
-        print(value)
-        runtime.update_visualizer(np.ones(FRAME_WIDTH) * value)
-
-
-def convert_csv_to_keypoints(
-    path: str | Path,
-    *,
-    output_path: str | Path | None = None,
-    fbx_path: str | None = None,
-    visualize: bool = False,
-    model: str = "sranipal",
-    head_object_name: str | None = None,
-    extra_mesh_names: tuple[str, ...] | None = None,
-) -> Path:
-    data = load_blendshape_csv(path)
-    runtime = FaceBlenderRuntime(
-        path=fbx_path,
-        enable_viewer=visualize,
-        model=model,
-        head_object_name=head_object_name,
-        extra_mesh_names=extra_mesh_names,
-    )
-
-    vertices_frames = []
-    lip_frames = []
-    tongue_tip_frames = []
-    cheek_keypoint_frames = []
-    keypoint_frames = []
-    faces = None
-
-    for idx, blendshapes in enumerate(data, start=1):
-        print(f"extracting frame {idx}/{len(data)}")
-        frame = runtime.extract_frame(blendshapes)
-        vertices_frames.append(frame["vertices"])
-        lip_frames.append(frame["lip"])
-        tongue_tip_frames.append(frame["tongue_tip"])
-        cheek_keypoint_frames.append(frame["cheek_keypoints"])
-        keypoint_frames.append(frame["keypoints"])
-        if faces is None:
-            faces = frame["faces"]
-        if visualize:
-            runtime.render(
-                frame["vertices"],
-                frame["faces"],
-                vertex_colors=frame.get("vertex_colors"),
-            )
-
-    if faces is None:
-        raise RuntimeError("No frames were extracted from the input CSV")
-
-    output = save_keypoints_npz(
-        path,
-        blendshapes=data,
-        vertices=np.stack(vertices_frames, axis=0),
-        faces=faces,
-        lip=np.stack(lip_frames, axis=0),
-        tongue_tip=np.stack(tongue_tip_frames, axis=0),
-        cheek_keypoints=np.stack(cheek_keypoint_frames, axis=0),
-        keypoints=np.stack(keypoint_frames, axis=0),
-        output_path=output_path,
-    )
-    print(f"saved keypoints to {output}")
-    return output
-
-
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="face_blender_shape")
-    subparsers = parser.add_subparsers(dest="command")
-
-    preview_parser = subparsers.add_parser("preview", help="Preview a blendshape CSV or sweep all shapes")
-    preview_parser.add_argument("--path", type=str, help="CSV sequence with 37 blendshape columns")
-    preview_parser.add_argument("--fps", type=float, default=DEFAULT_PLAYBACK_FPS, help="Playback FPS")
-    preview_parser.add_argument("--fbx", type=str, help="Override FBX path")
-    preview_parser.add_argument("--texture", type=str, help="Skin texture image path (auto-detects from assets/textures/)")
-    preview_parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"], help="Model backend (default: sranipal)")
-    preview_parser.add_argument("--view-scale", type=float, default=DEFAULT_VIEW_SCALE, help="Closer framing for meter-scale models (MetaHuman); larger = bigger face")
-    preview_parser.add_argument("--window-width", type=int, default=DEFAULT_OPEN3D_WIDTH, help="Viewer window width in pixels")
-    preview_parser.add_argument("--window-height", type=int, default=DEFAULT_OPEN3D_HEIGHT, help="Viewer window height in pixels")
-    preview_parser.add_argument(
-        "--head",
-        type=str,
-        default=None,
-        help="Face mesh object name inside FBX (metahuman / custom ARKit; default: bundled MetaHuman or Head)",
+    """
+    构建仅含「配置文件路径」参数的解析器；业务参数全部在 YAML 中填写。
+    """
+    parser = argparse.ArgumentParser(
+        prog="run.py",
+        description="根据 YAML 配置文件预览 blendshape CSV（见 face_blender_preview.yaml）。",
     )
-    preview_parser.add_argument(
-        "--extra-meshes",
+    parser.add_argument(
+        "--config",
         type=str,
-        default=None,
-        help='Comma-separated mesh names to merge for preview (e.g. teeth,eyes,hair). See docs/custom-digital-human.md',
+        default=DEFAULT_PREVIEW_CONFIG_NAME,
+        help=f"预览配置 YAML 路径（默认: {DEFAULT_PREVIEW_CONFIG_NAME}，相对当前工作目录）",
     )
-    preview_parser.set_defaults(handler=handle_preview_command)
-
-    convert_parser = subparsers.add_parser("convert", help="Convert a blendshape CSV into NPZ keypoints")
-    convert_parser.add_argument("--path", required=True, type=str, help="Input CSV path")
-    convert_parser.add_argument("--output", type=str, help="Output NPZ path")
-    convert_parser.add_argument("--fbx", type=str, help="Override FBX path")
-    convert_parser.add_argument("--visualize", action="store_true", help="Render while converting")
-    convert_parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"])
-    convert_parser.add_argument("--head", type=str, default=None, help="Face mesh object name (see preview --head)")
-    convert_parser.add_argument("--extra-meshes", type=str, default=None, help="Comma-separated extra meshes (see preview)")
-    convert_parser.set_defaults(handler=handle_convert_command)
-
     return parser
 
 
-def handle_preview_command(args: argparse.Namespace) -> int:
-    extra = parse_extra_mesh_names(getattr(args, "extra_meshes", None))
-    if args.path:
-        preview_sequence(
-            args.path,
-            args.fps,
-            fbx_path=args.fbx,
-            texture_path=args.texture,
-            model=args.model,
-            view_scale=args.view_scale,
-            window_width=args.window_width,
-            window_height=args.window_height,
-            head_object_name=args.head,
-            extra_mesh_names=extra,
-        )
-    else:
-        preview_all_shapes(
-            fbx_path=args.fbx,
-            texture_path=args.texture,
-            model=args.model,
-            view_scale=args.view_scale,
-            window_width=args.window_width,
-            window_height=args.window_height,
-            head_object_name=args.head,
-            extra_mesh_names=extra,
-        )
-    return 0
-
-
-def handle_convert_command(args: argparse.Namespace) -> int:
-    convert_csv_to_keypoints(
-        args.path,
-        output_path=args.output,
-        fbx_path=args.fbx,
-        visualize=args.visualize,
-        model=args.model,
-        head_object_name=args.head,
-        extra_mesh_names=parse_extra_mesh_names(getattr(args, "extra_meshes", None)),
+def run_preview(cfg: PreviewConfig) -> None:
+    """
+    按配置启动 CSV 序列预览。
+    cfg: load_preview_config 得到的预览配置。
+    """
+    preview_sequence(
+        cfg.path,
+        cfg.fps,
+        view_scale=cfg.view_scale,
+        window_width=cfg.window_width,
+        window_height=cfg.window_height,
+        head_object_name=cfg.head,
+        extra_mesh_names=cfg.extra_meshes,
     )
-    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    """
+    入口：解析可选 --config，读取 YAML 并运行预览。
+    argv: 若传入则交给 argparse.parse_args；否则使用默认进程参数；用于测试。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = Path.cwd() / config_path
+    cfg = load_preview_config(config_path)
+    run_preview(cfg)
+    return 0
 
-    if not hasattr(args, "handler"):
-        parser.print_help()
-        return 0
 
-    return args.handler(args)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

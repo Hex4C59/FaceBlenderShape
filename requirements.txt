@@ -1,5 +1,0 @@
-# Canonical dependencies live in pyproject.toml and uv.lock.
-# This file is only a compatibility shim for pip-based installs.
-# Use Python 3.10 because bpy==4.0.0 only ships wheels for that version.
---find-links https://download.blender.org/pypi/bpy/
--e .

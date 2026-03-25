@@ -1,0 +1,11 @@
+# 默认预览配置：`uv run python run.py`（可用 --config 指定其它路径）
+# path: SRanipal 37 维 CSV；内置 MetaHuman 头模，映射为 ARKit 驱动
+path: data/sample_data.csv
+
+# 可选
+# fps: 15
+# view_scale: 1.0
+# window_width: 960
+# window_height: 540
+# head: null
+# extra_meshes: null

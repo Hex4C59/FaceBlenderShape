@@ -67,8 +67,8 @@ dependencies = [
     "zstandard==0.22.0",
 ]
 
-[project.scripts]
-face-blender-shape = "face_blender_shape.cli:main"
+[tool.pyright]
+stubPath = "typings"
 
 [tool.uv]
 package = false
