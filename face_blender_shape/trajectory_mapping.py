@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from face_blender_shape.constants import BLENDSHAPE_INDEX, FRAME_WIDTH
+from face_blender_shape.core.blendshape_schema import BLENDSHAPE_INDEX, FRAME_WIDTH
 
 
 def mock_trajectory_from_mock_audio(

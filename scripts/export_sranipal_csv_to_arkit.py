@@ -13,7 +13,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from face_blender_shape.blendshape_mapping import convert_sranipal_batch
-from face_blender_shape.io import load_blendshape_csv, save_arkit_blendshape_csv
+from face_blender_shape.io.blendshape_csv import (
+    load_blendshape_csv,
+    save_arkit_blendshape_csv,
+)
 
 
 def main(argv: list[str] | None = None) -> int:

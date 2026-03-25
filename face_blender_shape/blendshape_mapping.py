@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from face_blender_shape.constants import BLENDSHAPE_NAMES, FRAME_WIDTH
+from face_blender_shape.core.blendshape_schema import BLENDSHAPE_NAMES, FRAME_WIDTH
 
 # SRanipal 37 维中与舌头对应的通道名；用于「直接写形态键」时从 ARKit 映射中整行剔除，避免与 jawOpen 等叠加。
 SRANIPAL_TONGUE_SHAPE_NAMES: frozenset[str] = frozenset(

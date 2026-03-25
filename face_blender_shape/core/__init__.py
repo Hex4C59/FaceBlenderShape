@@ -1,6 +1,4 @@
-"""兼容导出：保留旧常量导入路径。"""
-
-from __future__ import annotations
+"""基础定义子包：集中放置稳定常量与路径解析。"""
 
 from face_blender_shape.core.asset_names import (
     DEFAULT_HEAD_OBJECT_NAME,
@@ -16,6 +14,16 @@ from face_blender_shape.core.blendshape_schema import (
     BLENDSHAPE_INDEX,
     BLENDSHAPE_NAMES,
     FRAME_WIDTH,
+)
+from face_blender_shape.core.paths import (
+    DATA_DIR,
+    DEFAULT_SAMPLE_CSV_PATH,
+    DOCS_ASSETS_DIR,
+    METAHUMAN_FBX_PATH,
+    MODELS_DIR,
+    PROJECT_ROOT,
+    resolve_fbx_path,
+    resolve_input_csv_path,
 )
 from face_blender_shape.core.viewer_defaults import (
     DEFAULT_OPEN3D_BAKED_AMBIENT,
@@ -38,6 +46,7 @@ from face_blender_shape.core.viewer_defaults import (
 __all__ = [
     "BLENDSHAPE_INDEX",
     "BLENDSHAPE_NAMES",
+    "DATA_DIR",
     "DEFAULT_HEAD_OBJECT_NAME",
     "DEFAULT_OPEN3D_BAKED_AMBIENT",
     "DEFAULT_OPEN3D_BAKED_DIFFUSE",
@@ -53,13 +62,20 @@ __all__ = [
     "DEFAULT_OPEN3D_WIDTH",
     "DEFAULT_OPEN3D_WINDOW_NAME",
     "DEFAULT_PLAYBACK_FPS",
+    "DEFAULT_SAMPLE_CSV_PATH",
     "DEFAULT_VIEW_SCALE",
+    "DOCS_ASSETS_DIR",
     "FRAME_WIDTH",
     "METAHUMAN_EYE_LEFT_OBJECT_NAME",
     "METAHUMAN_EYE_RIGHT_OBJECT_NAME",
     "METAHUMAN_FBX",
+    "METAHUMAN_FBX_PATH",
     "METAHUMAN_HEAD_OBJECT_NAME",
     "METAHUMAN_TEETH_OBJECT_NAME",
+    "MODELS_DIR",
+    "PROJECT_ROOT",
     "SRANIPAL_EYE_LEFT_OBJECT_NAME",
     "SRANIPAL_EYE_RIGHT_OBJECT_NAME",
+    "resolve_fbx_path",
+    "resolve_input_csv_path",
 ]

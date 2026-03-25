@@ -24,8 +24,12 @@ if str(_ROOT) not in sys.path:
 
 import numpy as np
 
-from face_blender_shape.blender_runtime import FaceBlenderRuntime
-from face_blender_shape.constants import DEFAULT_OPEN3D_HEIGHT, DEFAULT_OPEN3D_WIDTH, DEFAULT_VIEW_SCALE
+from face_blender_shape.core.viewer_defaults import (
+    DEFAULT_OPEN3D_HEIGHT,
+    DEFAULT_OPEN3D_WIDTH,
+    DEFAULT_VIEW_SCALE,
+)
+from face_blender_shape.runtime.blender_runtime import FaceBlenderRuntime
 from face_blender_shape.trajectory_mapping import (
     mock_trajectory_from_mock_audio,
     save_sranipal_csv,
