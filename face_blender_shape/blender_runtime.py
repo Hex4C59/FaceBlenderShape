@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import bpy
 import bmesh  # pyright: ignore[reportMissingModuleSource]
@@ -33,7 +34,7 @@ from face_blender_shape.landmarks import (
     get_tongue_tip,
     get_tongue_vertices,
 )
-from face_blender_shape.paths import METAHUMAN_FBX_PATH
+from face_blender_shape.paths import METAHUMAN_FBX_PATH, resolve_fbx_path
 from face_blender_shape.open3d_viewer import Open3DMeshViewer, SKIN_TONE
 
 # 眼球顶点色相关常量，避免在循环内重复分配小数组
@@ -51,22 +52,26 @@ class FaceBlenderRuntime:
         self,
         *,
         enable_viewer: bool = True,
+        enable_side_viewer: bool = False,
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
         window_width: int = DEFAULT_OPEN3D_WIDTH,
         window_height: int = DEFAULT_OPEN3D_HEIGHT,
         view_scale: float = DEFAULT_VIEW_SCALE,
         head_object_name: str | None = None,
         extra_mesh_names: Sequence[str] | None = None,
+        fbx_path: str | Path | None = None,
     ) -> None:
         """初始化运行时并加载场景资源。
 
-        enable_viewer: 是否创建 Open3DMeshViewer。
-        window_name: Open3D 窗口标题。
-        window_width: 窗口宽度（像素）。
-        window_height: 窗口高度（像素）。
+        enable_viewer: 是否创建正面 Open3DMeshViewer。
+        enable_side_viewer: 是否额外创建侧视窗口（与主视同步同一网格）。
+        window_name: Open3D 主窗口标题。
+        window_width: 主窗口宽度（像素）；侧视窗口同宽或略小由实现决定。
+        window_height: 主窗口高度（像素）。
         view_scale: 相机/网格显示缩放。
         head_object_name: 头部网格在场景中的对象名；None 时用 MetaHuman 默认头对象名。
         extra_mesh_names: 除面部外还要合并进视图的网格对象名；None 时默认牙齿与双眼。
+        fbx_path: 自定义 FBX 路径；None 时使用项目默认 MetaHuman 路径解析结果。
         """
         self._extra_mesh_names = (
             tuple(n.strip() for n in extra_mesh_names if n.strip())
@@ -79,6 +84,7 @@ class FaceBlenderRuntime:
         head_object_name = head_object_name or METAHUMAN_HEAD_OBJECT_NAME
 
         self.blendshape_names = np.array(BLENDSHAPE_NAMES)
+        self._fbx_path = resolve_fbx_path(fbx_path)
         self.load_fbx()
         self.set_active_object(head_object_name)
 
@@ -106,14 +112,26 @@ class FaceBlenderRuntime:
                 view_scale=view_scale,
                 window_width=window_width,
                 window_height=window_height,
+                camera_profile="front",
             )
             if enable_viewer
             else None
         )
+        self.side_viewer = (
+            Open3DMeshViewer(
+                window_name=f"{window_name} — 侧视",
+                view_scale=view_scale * 1.05,
+                window_width=max(window_width * 4 // 5, 480),
+                window_height=max(window_height * 4 // 5, 400),
+                camera_profile="side",
+            )
+            if enable_viewer and enable_side_viewer
+            else None
+        )
 
     def load_fbx(self) -> None:
-        """解析并导入内置 MetaHuman FBX 到当前 Blender 数据。"""
-        self.fbx_path = METAHUMAN_FBX_PATH.resolve()
+        """解析并导入 FBX（默认或构造时传入的路径）到当前 Blender 数据。"""
+        self.fbx_path = self._fbx_path
         bpy.ops.object.select_all(action="DESELECT")
         bpy.ops.import_scene.fbx(filepath=str(self.fbx_path))
 
@@ -424,9 +442,12 @@ class FaceBlenderRuntime:
         faces: 三角面索引。
         vertex_colors: 可选 RGB 顶点色；None 时由查看器使用默认肤色。
         """
-        if self.viewer is None:
-            raise RuntimeError("Viewer is disabled for this runtime instance")
-        self.viewer.update(vertices, faces, vertex_colors=vertex_colors)
+        if self.viewer is None and self.side_viewer is None:
+            return
+        if self.viewer is not None:
+            self.viewer.update(vertices, faces, vertex_colors=vertex_colors)
+        if self.side_viewer is not None:
+            self.side_viewer.update(vertices, faces, vertex_colors=vertex_colors)
 
     def update_visualizer(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:
         """提取一帧并刷新视窗，返回与 extract_frame 相同的字典。

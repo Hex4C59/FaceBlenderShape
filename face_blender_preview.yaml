@@ -9,3 +9,5 @@ path: data/sample_data.csv
 # window_height: 540
 # head: null
 # extra_meshes: null
+# dual_view: false   # true 时额外打开侧视窗口
+# fbx: null          # 自定义 FBX 路径；null 则用 models/Metahuman_Head.fbx（若存在）

@@ -12,14 +12,9 @@
 
 **不再支持**：在配置或代码中切换其它 FBX 路径、外部 `texture` 贴图加载与 UV 烘焙；头部无合并附件时由 Open3D 使用默认肤色顶点色，附件部件仍按材质 Base Color 近似。
 
-## 查看任意 FBX 中的物体名
+## 查看 FBX 中的物体名
 
-辅助脚本仍可用于 **查看** 自定义资产（不表示运行时仍会加载该 FBX）：
-
-```bash
-uv run --no-sync python scripts/list_fbx_meshes.py /path/to/avatar.fbx
-uv run --no-sync python scripts/list_fbx_meshes.py /path/to/avatar.fbx --shape-keys
-```
+本仓库不再附带「列出网格 / shape key」的辅助脚本；需要核对对象名时，请在 **Blender** 中打开对应 FBX，在 Outliner 与 Shape Keys 面板中查看（运行时仍只加载内置 MetaHuman FBX）。
 
 ## 展示级画质
 

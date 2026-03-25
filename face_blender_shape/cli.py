@@ -33,6 +33,8 @@ class PreviewConfig:
     window_width / window_height: 预览窗口宽高（像素）。
     head: FBX 里承载 blendshape 的网格对象在 Blender 中的名称；null 时用 MetaHuman 默认头对象名。
     extra_meshes: 除面部外还要合并进同屏预览的网格对象名列表（如牙齿、头发）；null 时默认牙齿与双眼。
+    dual_view: 是否额外打开侧视窗口。
+    fbx: 自定义 FBX 路径；null 时用项目默认。
     """
 
     path: str
@@ -42,6 +44,8 @@ class PreviewConfig:
     window_height: int
     head: str | None
     extra_meshes: tuple[str, ...] | None
+    dual_view: bool
+    fbx: str | None
 
 
 def parse_extra_mesh_names(s: str | None) -> tuple[str, ...] | None:
@@ -85,6 +89,8 @@ def load_preview_config(config_path: Path) -> PreviewConfig:
         raise ValueError("配置中 path 必须为非空字符串，指向 blendshape CSV 文件")
     head_val = raw.get("head")
     head_out = None if head_val is None else str(head_val).strip() or None
+    fbx_val = raw.get("fbx")
+    fbx_out = None if fbx_val is None else str(fbx_val).strip() or None
     return PreviewConfig(
         path=path_out,
         fps=float(raw.get("fps", DEFAULT_PLAYBACK_FPS)),
@@ -93,6 +99,8 @@ def load_preview_config(config_path: Path) -> PreviewConfig:
         window_height=int(raw.get("window_height", DEFAULT_OPEN3D_HEIGHT)),
         head=head_out,
         extra_meshes=normalize_extra_meshes_yaml(raw.get("extra_meshes")),
+        dual_view=bool(raw.get("dual_view", False)),
+        fbx=fbx_out,
     )
 
 
@@ -105,21 +113,27 @@ def preview_sequence(
     window_height: int = DEFAULT_OPEN3D_HEIGHT,
     head_object_name: str | None = None,
     extra_mesh_names: tuple[str, ...] | None = None,
+    dual_view: bool = False,
+    fbx_path: str | None = None,
 ) -> None:
     """
     按 CSV 序列逐帧驱动 Open3D 预览。
     path: blendshape CSV 路径。
     fps: 每帧间隔由 fps 推算；<=0 则不 sleep。
+    dual_view: True 时额外打开侧视窗口。
+    fbx_path: 自定义 FBX；None 用项目默认。
     其余关键字参数含义与 FaceBlenderRuntime 一致。
     """
     data = load_blendshape_csv(path)
     runtime = FaceBlenderRuntime(
         enable_viewer=True,
+        enable_side_viewer=dual_view,
         view_scale=view_scale,
         window_width=window_width,
         window_height=window_height,
         head_object_name=head_object_name,
         extra_mesh_names=extra_mesh_names,
+        fbx_path=fbx_path,
     )
     frame_delay = 1.0 / fps if fps > 0 else 0.0
 
@@ -160,6 +174,8 @@ def run_preview(cfg: PreviewConfig) -> None:
         window_height=cfg.window_height,
         head_object_name=cfg.head,
         extra_mesh_names=cfg.extra_meshes,
+        dual_view=cfg.dual_view,
+        fbx_path=cfg.fbx,
     )
 
 
