@@ -1,7 +1,0 @@
-"""兼容导出：保留旧 blender_runtime 导入路径。"""
-
-from __future__ import annotations
-
-from face_blender_shape.runtime.blender_runtime import FaceBlenderRuntime
-
-__all__ = ["FaceBlenderRuntime"]

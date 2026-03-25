@@ -1,21 +1,8 @@
-"""显示层子包：集中放置 Open3D 预览逻辑。"""
+"""显示层子包。
 
-from face_blender_shape.viewer.open3d_viewer import CameraProfile, Open3DMeshViewer, SKIN_TONE
-from face_blender_shape.viewer.visual_presets import (
-    Open3DViewerTune,
-    ProceduralSkinMode,
-    active_preset_name,
-    get_open3d_viewer_tune,
-    get_procedural_skin_mode,
-)
+包级入口仅保留最小稳定显示能力；其余内容请从具体模块导入。
+"""
 
-__all__ = [
-    "CameraProfile",
-    "Open3DMeshViewer",
-    "Open3DViewerTune",
-    "ProceduralSkinMode",
-    "SKIN_TONE",
-    "active_preset_name",
-    "get_open3d_viewer_tune",
-    "get_procedural_skin_mode",
-]
+from face_blender_shape.viewer.open3d_viewer import CameraProfile, Open3DMeshViewer
+
+__all__ = ["CameraProfile", "Open3DMeshViewer"]

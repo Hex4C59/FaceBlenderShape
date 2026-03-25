@@ -1,4 +1,7 @@
-"""运行时子包：集中放置 Blender 驱动与帧组装逻辑。"""
+"""运行时子包。
+
+包级入口仅保留稳定的运行时主类。
+"""
 
 from face_blender_shape.runtime.blender_runtime import FaceBlenderRuntime
 
