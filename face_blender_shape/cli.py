@@ -1,3 +1,5 @@
+"""命令行入口：解析 YAML/参数，读取 CSV blendshape 序列并驱动 FaceBlenderRuntime 播放预览。"""
+
 from __future__ import annotations
 
 import argparse

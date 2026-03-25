@@ -1,3 +1,5 @@
+"""全局常量：SRanipal 37 维 blendshape 名称与帧列数、Open3D 默认窗口与渲染参数、MetaHuman 场景对象名与资源文件名。"""
+
 from __future__ import annotations
 
 BLENDSHAPE_NAMES = (
@@ -52,8 +54,13 @@ DEFAULT_OPEN3D_BACKGROUND_RGB = (0.86, 0.89, 0.93)
 DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA = 1.14
 # Bake soft diffuse into vertex colors and turn off scene lights (reduces plastic specular).
 DEFAULT_OPEN3D_BAKED_SHADING = True
-DEFAULT_OPEN3D_BAKED_AMBIENT = 0.30
-DEFAULT_OPEN3D_BAKED_DIFFUSE = 0.70
+DEFAULT_OPEN3D_BAKED_AMBIENT = 0.24
+DEFAULT_OPEN3D_BAKED_DIFFUSE = 0.78
+# 无贴图时用法线变化与空间噪声伪造微褶皱/毛孔（Open3D 无法采样材质法线贴图）。
+DEFAULT_OPEN3D_SKIN_DETAIL_ENABLED = True
+DEFAULT_OPEN3D_SKIN_CREASE_STRENGTH = 0.45
+DEFAULT_OPEN3D_SKIN_MICRO_STRENGTH = 0.085
+DEFAULT_OPEN3D_SKIN_MICRO_FREQ = 95.0
 # >1 pulls the camera closer (face fills more of the window). See Open3D ViewControl.set_zoom.
 DEFAULT_VIEW_SCALE = 2.2
 DEFAULT_HEAD_OBJECT_NAME = "Head"

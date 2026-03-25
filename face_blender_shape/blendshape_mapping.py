@@ -1,12 +1,7 @@
-"""SRanipal (37) → ARKit (52) blendshape mapping.
+"""SRanipal（37 维）到 ARKit 的 blendshape 名称映射、稀疏转换矩阵及逐帧/批量权重转换。
 
-Each SRanipal blendshape maps to one or more ARKit targets with a weight.
-When multiple SRanipal shapes drive the same ARKit shape, their contributions
-are summed and clamped to [0, 1].
-
-Reference:
-  - VRCFaceTracking Unified Expressions documentation
-  - Apple ARKit ARFaceAnchor.BlendShapeLocation
+多路 SRanipal 形状驱动同一 ARKit 目标时权重相加并裁剪到 [0, 1]。
+参考：VRCFaceTracking Unified Expressions、Apple ARFaceAnchor.BlendShapeLocation。
 """
 
 from __future__ import annotations

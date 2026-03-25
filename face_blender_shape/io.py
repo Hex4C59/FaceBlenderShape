@@ -1,3 +1,5 @@
+"""读取符合项目列数约定的 blendshape CSV，解析为浮点数帧矩阵。"""
+
 from __future__ import annotations
 
 from pathlib import Path

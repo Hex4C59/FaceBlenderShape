@@ -1,3 +1,5 @@
+"""在 Blender 中加载 MetaHuman 等资源，将 SRanipal 帧映射为 ARKit 权重并驱动网格 blendshape，可选接入 Open3D 实时预览。"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -32,7 +34,7 @@ from face_blender_shape.landmarks import (
     get_tongue_vertices,
 )
 from face_blender_shape.paths import METAHUMAN_FBX_PATH
-from face_blender_shape.viewers.open3d_viewer import Open3DMeshViewer, SKIN_TONE
+from face_blender_shape.open3d_viewer import Open3DMeshViewer, SKIN_TONE
 
 # 眼球顶点色相关常量，避免在循环内重复分配小数组
 _DEFAULT_PRINCIPLED_RGB = np.array([0.85, 0.85, 0.88], dtype=np.float64)

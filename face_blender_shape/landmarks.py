@@ -1,3 +1,5 @@
+"""从变形后顶点数组中按固定索引切片提取唇、舌、颊等区域，并组装默认关键点字典。"""
+
 from __future__ import annotations
 
 import numpy as np

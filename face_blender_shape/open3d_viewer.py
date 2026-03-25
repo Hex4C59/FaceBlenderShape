@@ -1,3 +1,5 @@
+"""基于 Open3D 的三角网格预览窗口：顶点色、烘焙光照、相机缩放等与面部网格显示相关的封装。"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,6 +11,10 @@ from face_blender_shape.constants import (
     DEFAULT_OPEN3D_BAKED_DIFFUSE,
     DEFAULT_OPEN3D_BAKED_SHADING,
     DEFAULT_OPEN3D_HEIGHT,
+    DEFAULT_OPEN3D_SKIN_CREASE_STRENGTH,
+    DEFAULT_OPEN3D_SKIN_DETAIL_ENABLED,
+    DEFAULT_OPEN3D_SKIN_MICRO_FREQ,
+    DEFAULT_OPEN3D_SKIN_MICRO_STRENGTH,
     DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA,
     DEFAULT_OPEN3D_WINDOW_NAME,
     DEFAULT_OPEN3D_WIDTH,
@@ -23,6 +29,75 @@ SKIN_TONE = np.array([0.80, 0.69, 0.62])
 # MetaHuman / meter-scale heads have max_dim ≪ 10; same formula pushed the camera too far.
 _LARGE_MESH_THRESHOLD = 5.0
 _SMALL_MESH_ZOOM_COEFF = 0.52
+
+
+def _vertex_neighbor_sets(vertex_count: int, faces: np.ndarray) -> list[set[int]]:
+    """为每个顶点收集一环邻接顶点索引（用于法线不一致度近似褶皱）。
+
+    vertex_count: 顶点个数。
+    faces: 三角面索引，形状 (F, 3)。
+    """
+    neigh: list[set[int]] = [set() for _ in range(vertex_count)]
+    for a, b, c in faces:
+        ia, ib, ic = int(a), int(b), int(c)
+        neigh[ia].update((ib, ic))
+        neigh[ib].update((ia, ic))
+        neigh[ic].update((ia, ib))
+    return neigh
+
+
+def _skin_detail_modulate_albedo(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    rgb: np.ndarray,
+    *,
+    crease_strength: float,
+    micro_strength: float,
+    micro_freq: float,
+) -> np.ndarray:
+    """在 albedo 上叠加以法线变化为主的沟壑加深与弱空间噪声（模拟毛孔级起伏）。
+
+    vertices: 顶点坐标 (N, 3)。
+    faces: 三角索引 (F, 3)。
+    rgb: 输入 RGB，形状 (N, 3)。
+    crease_strength: 邻域法线不一致时的变暗幅度，0 关闭沟壑感。
+    micro_strength: 位置正弦乘积噪声强度，0 关闭微噪。
+    micro_freq: 噪声空间频率（与模型尺度成反比调节）。
+    """
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    out = np.clip(np.asarray(rgb, dtype=np.float64), 0.0, 1.0).copy()
+    n_verts = v.shape[0]
+    if n_verts == 0 or f.size == 0:
+        return out
+
+    tmp = o3d.geometry.TriangleMesh()
+    tmp.vertices = o3d.utility.Vector3dVector(v)
+    tmp.triangles = o3d.utility.Vector3iVector(f)
+    tmp.compute_vertex_normals()
+    normals = np.asarray(tmp.vertex_normals, dtype=np.float64)
+    neigh = _vertex_neighbor_sets(n_verts, f)
+    crease = np.zeros(n_verts, dtype=np.float64)
+    for i in range(n_verts):
+        js = neigh[i]
+        if not js:
+            continue
+        ni = normals[i]
+        acc = 0.0
+        for j in js:
+            acc += max(0.0, 1.0 - float(np.dot(ni, normals[j])))
+        crease[i] = acc / len(js)
+    q = float(np.quantile(crease, 0.92)) + 1e-6
+    crease = np.clip(crease / q, 0.0, 1.0)
+    out *= np.clip(1.0 - crease_strength * crease[:, np.newaxis], 0.55, 1.0)
+
+    if micro_strength > 0.0:
+        p = v * float(micro_freq)
+        h = np.sin(p[:, 0]) * np.sin(p[:, 1] * 1.07) * np.sin(p[:, 2] * 0.93)
+        h = (h * 0.5 + 0.5).reshape(-1, 1)
+        out *= np.clip(1.0 + micro_strength * (h - 0.5) * 2.0, 0.88, 1.12)
+
+    return np.clip(out, 0.0, 1.0)
 
 
 class Open3DMeshViewer:
@@ -47,6 +122,10 @@ class Open3DMeshViewer:
         self._baked_shading = bool(DEFAULT_OPEN3D_BAKED_SHADING)
         self._baked_ambient = float(DEFAULT_OPEN3D_BAKED_AMBIENT)
         self._baked_diffuse = float(DEFAULT_OPEN3D_BAKED_DIFFUSE)
+        self._skin_detail_enabled = bool(DEFAULT_OPEN3D_SKIN_DETAIL_ENABLED)
+        self._skin_crease_strength = float(DEFAULT_OPEN3D_SKIN_CREASE_STRENGTH)
+        self._skin_micro_strength = float(DEFAULT_OPEN3D_SKIN_MICRO_STRENGTH)
+        self._skin_micro_freq = float(DEFAULT_OPEN3D_SKIN_MICRO_FREQ)
         self._apply_friendly_render_settings()
 
     def _apply_friendly_render_settings(self) -> None:
@@ -137,9 +216,26 @@ class Open3DMeshViewer:
         vertex_colors: np.ndarray | None = None,
     ) -> None:
         if vertex_colors is not None:
-            display_colors = self._matte_vertex_colors(vertex_colors)
+            display_colors = np.clip(np.asarray(vertex_colors, dtype=np.float64), 0.0, 1.0)
         else:
-            display_colors = self._matte_vertex_colors(np.tile(SKIN_TONE, (len(vertices), 1)))
+            display_colors = np.tile(np.asarray(SKIN_TONE, dtype=np.float64), (len(vertices), 1))
+
+        if (
+            self._skin_detail_enabled
+            and len(vertices) > 0
+            and len(faces) > 0
+            and (self._skin_crease_strength > 0.0 or self._skin_micro_strength > 0.0)
+        ):
+            display_colors = _skin_detail_modulate_albedo(
+                vertices,
+                faces,
+                display_colors,
+                crease_strength=self._skin_crease_strength,
+                micro_strength=self._skin_micro_strength,
+                micro_freq=self._skin_micro_freq,
+            )
+
+        display_colors = self._matte_vertex_colors(display_colors)
 
         if self._baked_shading and len(vertices) > 0 and len(faces) > 0:
             display_colors = self._bake_half_lambert_shading(vertices, faces, display_colors)

@@ -1,3 +1,5 @@
+"""项目根、模型与数据目录等路径常量，以及 FBX 与 CSV 输入路径的解析与回退查找。"""
+
 from __future__ import annotations
 
 from pathlib import Path

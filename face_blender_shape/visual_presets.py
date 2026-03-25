@@ -1,12 +1,4 @@
-"""Open3D + procedural skin look presets.
-
-Change ``DEFAULT_OPEN3D_VISUAL_PRESET`` in ``constants.py``:
-
-- ``neutral_bust`` — dark gray backdrop, flat lighting, uniform tan skin
-  (ZBrush / clay bust reference).
-- ``detailed`` — lighter backdrop, stronger SSS + specular, rosy zones,
-  brows/stubble/pores (previous “make it alive” look).
-"""
+"""Open3D 观感与程序化肤色预设（如 neutral_bust、detailed），由 constants 中的默认预设名选用。"""
 
 from __future__ import annotations
 
