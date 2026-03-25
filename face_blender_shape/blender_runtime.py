@@ -12,9 +12,13 @@ from mathutils import Vector  # pyright: ignore[reportMissingModuleSource]
 
 from face_blender_shape.blendshape_mapping import (
     ARKIT_SHAPE_NAMES,
+    SRANIPAL_TONGUE_SHAPE_NAMES,
+    SRANIPAL_TO_ARKIT_MATRIX,
+    SRANIPAL_TO_ARKIT_MATRIX_EXCLUDING_TONGUE_SOURCES,
     convert_sranipal_to_arkit,
 )
 from face_blender_shape.constants import (
+    BLENDSHAPE_INDEX,
     BLENDSHAPE_NAMES,
     DEFAULT_OPEN3D_HEIGHT,
     DEFAULT_OPEN3D_WIDTH,
@@ -46,7 +50,7 @@ _SCLERA_SOFT = np.array([0.93, 0.94, 0.97], dtype=np.float64)
 
 
 class FaceBlenderRuntime:
-    """由 Blendshape 驱动的面部网格预览；固定使用 MetaHuman 资产，SRanipal CSV 经映射为 ARKit 权重。"""
+    """由 Blendshape 驱动的面部网格预览；SRanipal CSV 经 ARKit 映射驱动形态键；若网格含 Tongue_* 键则舌头通道直连该键。"""
 
     def __init__(
         self,
@@ -80,7 +84,6 @@ class FaceBlenderRuntime:
         )
 
         self._arkit_names = np.array(ARKIT_SHAPE_NAMES)
-        self._convert_frame = convert_sranipal_to_arkit
         head_object_name = head_object_name or METAHUMAN_HEAD_OBJECT_NAME
 
         self.blendshape_names = np.array(BLENDSHAPE_NAMES)
@@ -105,6 +108,8 @@ class FaceBlenderRuntime:
                 bpy.data.objects.get(METAHUMAN_EYE_LEFT_OBJECT_NAME),
                 bpy.data.objects.get(METAHUMAN_EYE_RIGHT_OBJECT_NAME),
             )
+
+        self._init_sranipal_tongue_direct_mode()
 
         self.viewer = (
             Open3DMeshViewer(
@@ -142,6 +147,51 @@ class FaceBlenderRuntime:
         """
         self.active_obj = bpy.data.objects[object_name]
         bpy.context.view_layer.objects.active = self.active_obj
+
+    def _init_sranipal_tongue_direct_mode(self) -> None:
+        """扫描活动头与附加网格：若任一处存在与 SRanipal 同名的 Tongue_* 形态键，则启用直接写舌头并改用不含舌头行的 ARKit 矩阵。"""
+        to_scan = [self.active_obj, *self._append_parts]
+        use_direct = False
+        for ob in to_scan:
+            if ob is None:
+                continue
+            sk = ob.data.shape_keys
+            if sk is None:
+                continue
+            kb = sk.key_blocks
+            if any(n in kb for n in SRANIPAL_TONGUE_SHAPE_NAMES):
+                use_direct = True
+                break
+        self._use_direct_sranipal_tongue = use_direct
+        self._sranipal_to_arkit_matrix = (
+            SRANIPAL_TO_ARKIT_MATRIX_EXCLUDING_TONGUE_SOURCES
+            if use_direct
+            else SRANIPAL_TO_ARKIT_MATRIX
+        )
+        if use_direct:
+            print(
+                "[face_blender_shape] 检测到 Tongue_* 形态键：舌头将直接写入网格，"
+                "SRanipal 舌头通道不再映射到 jawOpen。"
+            )
+
+    def _apply_direct_sranipal_tongue(self, sranipal_frame: np.ndarray) -> None:
+        """把头与附加对象上存在的 Tongue_* 形态键设为 SRanipal 帧中对应通道值。
+
+        sranipal_frame: 长度 FRAME_WIDTH 的一帧，与 BLENDSHAPE_NAMES 顺序一致。
+        """
+        if not self._use_direct_sranipal_tongue:
+            return
+        frame = np.asarray(sranipal_frame, dtype=float).reshape(-1)
+        for ob in (self.active_obj, *self._append_parts):
+            if ob is None:
+                continue
+            sk = ob.data.shape_keys
+            if sk is None:
+                continue
+            kb = sk.key_blocks
+            for name in SRANIPAL_TONGUE_SHAPE_NAMES:
+                if name in kb:
+                    kb[name].value = float(frame[BLENDSHAPE_INDEX[name]])
 
     # ------------------------------------------------------------------
     # Core blendshape / mesh pipeline
@@ -309,9 +359,13 @@ class FaceBlenderRuntime:
         bpy.context.view_layer.objects.active = self.active_obj
         self.active_obj.update_from_editmode()
 
-        arkit_values = self._convert_frame(frame)
+        arkit_values = convert_sranipal_to_arkit(
+            frame,
+            matrix=self._sranipal_to_arkit_matrix,
+        )
         self._apply_arkit_shapes(arkit_values)
         self._apply_arkit_to_secondary_meshes(arkit_values)
+        self._apply_direct_sranipal_tongue(frame)
 
         obj = self.active_obj.copy()
         mesh = self.get_modified_mesh(self.active_obj)

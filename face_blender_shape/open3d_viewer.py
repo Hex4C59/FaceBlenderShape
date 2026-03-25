@@ -10,20 +10,17 @@ import open3d as o3d
 CameraProfile = Literal["front", "side"]
 
 from face_blender_shape.constants import (
-    DEFAULT_OPEN3D_BACKGROUND_RGB,
-    DEFAULT_OPEN3D_BAKED_AMBIENT,
-    DEFAULT_OPEN3D_BAKED_DIFFUSE,
     DEFAULT_OPEN3D_BAKED_SHADING,
     DEFAULT_OPEN3D_HEIGHT,
     DEFAULT_OPEN3D_SKIN_CREASE_STRENGTH,
     DEFAULT_OPEN3D_SKIN_DETAIL_ENABLED,
     DEFAULT_OPEN3D_SKIN_MICRO_FREQ,
     DEFAULT_OPEN3D_SKIN_MICRO_STRENGTH,
-    DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA,
     DEFAULT_OPEN3D_WINDOW_NAME,
     DEFAULT_OPEN3D_WIDTH,
     DEFAULT_VIEW_SCALE,
 )
+from face_blender_shape.visual_presets import get_open3d_viewer_tune
 
 # Slightly warmer, less saturated — reads less “wax figure” under simple lighting.
 SKIN_TONE = np.array([0.80, 0.69, 0.62])
@@ -119,6 +116,11 @@ class Open3DMeshViewer:
         """
         self._camera_profile: CameraProfile = camera_profile
         self._view_scale = max(float(view_scale), 0.05)
+        _tune = get_open3d_viewer_tune()
+        self._background_rgb = tuple(float(x) for x in _tune.background_rgb)
+        self._matte_gamma = float(_tune.matte_gamma)
+        self._baked_ambient = float(_tune.baked_ambient)
+        self._baked_diffuse = float(_tune.baked_diffuse)
         self._visualizer = o3d.visualization.Visualizer()
         self._visualizer.create_window(
             window_name=window_name,
@@ -127,10 +129,7 @@ class Open3DMeshViewer:
         )
         self._mesh: o3d.geometry.TriangleMesh | None = None
         self._camera_initialized = False
-        self._matte_gamma = float(DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA)
         self._baked_shading = bool(DEFAULT_OPEN3D_BAKED_SHADING)
-        self._baked_ambient = float(DEFAULT_OPEN3D_BAKED_AMBIENT)
-        self._baked_diffuse = float(DEFAULT_OPEN3D_BAKED_DIFFUSE)
         self._skin_detail_enabled = bool(DEFAULT_OPEN3D_SKIN_DETAIL_ENABLED)
         self._skin_crease_strength = float(DEFAULT_OPEN3D_SKIN_CREASE_STRENGTH)
         self._skin_micro_strength = float(DEFAULT_OPEN3D_SKIN_MICRO_STRENGTH)
@@ -142,7 +141,7 @@ class Open3DMeshViewer:
         ro = self._visualizer.get_render_option()
         ro.mesh_color_option = o3d.visualization.MeshColorOption.Color
         ro.mesh_shade_option = o3d.visualization.MeshShadeOption.Color
-        ro.background_color = np.asarray(DEFAULT_OPEN3D_BACKGROUND_RGB, dtype=np.float64)
+        ro.background_color = np.asarray(self._background_rgb, dtype=np.float64)
         # Baked shading uses vertex colors as final display color; scene lights add plastic specular.
         ro.light_on = not self._baked_shading
         ro.mesh_show_wireframe = False

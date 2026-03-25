@@ -2,6 +2,8 @@
 
 运行时 **固定加载** `models/Metahuman_Head.fbx`，CSV 仍为 **SRanipal 37 维**，内部 **SRanipal → ARKit** 映射后驱动该头模。
 
+若 **`head` 网格或 `extra_meshes` 中任一对象**带有与 SRanipal 列名一致的 **`Tongue_*` 形态键**（见 `constants.BLENDSHAPE_NAMES`），启动时会自动启用 **舌头直连**：这些通道按 CSV 数值写入对应形态键，且 **SRanipal 中全部舌头行不再参与 ARKit 映射**（避免 `Tongue_LongStep*` 再叠加到 `jawOpen`）。无 `Tongue_*` 键时行为与此前一致。
+
 ## 配置方式
 
 使用项目根目录 **`face_blender_preview.yaml`**（或 `run.py --config` 指向其它 YAML）：

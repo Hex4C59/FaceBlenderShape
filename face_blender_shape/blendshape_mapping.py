@@ -10,6 +10,11 @@ import numpy as np
 
 from face_blender_shape.constants import BLENDSHAPE_NAMES, FRAME_WIDTH
 
+# SRanipal 37 维中与舌头对应的通道名；用于「直接写形态键」时从 ARKit 映射中整行剔除，避免与 jawOpen 等叠加。
+SRANIPAL_TONGUE_SHAPE_NAMES: frozenset[str] = frozenset(
+    n for n in BLENDSHAPE_NAMES if n.startswith("Tongue_")
+)
+
 # fmt: off
 SRANIPAL_TO_ARKIT: dict[str, list[tuple[str, float]]] = {
     # ── Jaw ──
@@ -94,27 +99,61 @@ ARKIT_SHAPE_NAMES: tuple[str, ...] = (
 _ARKIT_INDEX = {name: idx for idx, name in enumerate(ARKIT_SHAPE_NAMES)}
 
 
-def _build_sparse_matrix() -> np.ndarray:
-    """Pre-compute a (37, 51) conversion matrix: SRanipal → ARKit weights."""
+def _build_sparse_matrix(
+    *,
+    omit_sranipal_sources: frozenset[str] | None = None,
+) -> np.ndarray:
+    """
+    预计算 (37, 51) 的 SRanipal → ARKit 权重矩阵。
+
+    omit_sranipal_sources: 若为 frozenset，则这些 SRanipal 通道不参与映射（整行保持为 0），用于改由运行时直接写 Tongue_* 形态键。
+    """
     mat = np.zeros((FRAME_WIDTH, len(ARKIT_SHAPE_NAMES)), dtype=float)
+    omit = omit_sranipal_sources or frozenset()
     for src_idx, src_name in enumerate(BLENDSHAPE_NAMES):
+        if src_name in omit:
+            continue
         for arkit_name, weight in SRANIPAL_TO_ARKIT.get(src_name, []):
             if arkit_name in _ARKIT_INDEX:
                 mat[src_idx, _ARKIT_INDEX[arkit_name]] = weight
     return mat
 
 
-_CONVERSION_MATRIX = _build_sparse_matrix()
+# 默认 SRanipal→ARKit 矩阵；当网格上存在 Tongue_* 形态键时改用 SRANIPAL_TO_ARKIT_MATRIX_EXCLUDING_TONGUE_SOURCES。
+SRANIPAL_TO_ARKIT_MATRIX = _build_sparse_matrix()
+SRANIPAL_TO_ARKIT_MATRIX_EXCLUDING_TONGUE_SOURCES = _build_sparse_matrix(
+    omit_sranipal_sources=SRANIPAL_TONGUE_SHAPE_NAMES,
+)
 
 
-def convert_sranipal_to_arkit(sranipal_frame: np.ndarray) -> np.ndarray:
-    """Convert a single SRanipal (37,) frame to ARKit (51,) weights."""
+def convert_sranipal_to_arkit(
+    sranipal_frame: np.ndarray,
+    *,
+    matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    将单帧 SRanipal (37,) 转为 ARKit (51,) 权重。
+
+    sranipal_frame: 一维或可被 reshape 为 (37,) 的数组。
+    matrix: 自定义转换矩阵；None 时使用 SRANIPAL_TO_ARKIT_MATRIX。
+    """
+    mat = SRANIPAL_TO_ARKIT_MATRIX if matrix is None else matrix
     frame = np.asarray(sranipal_frame, dtype=float).reshape(-1)
-    arkit = frame @ _CONVERSION_MATRIX
+    arkit = frame @ mat
     return np.clip(arkit, 0.0, 1.0)
 
 
-def convert_sranipal_batch(data: np.ndarray) -> np.ndarray:
-    """Convert (N, 37) SRanipal data to (N, 51) ARKit weights."""
-    arkit = np.asarray(data, dtype=float) @ _CONVERSION_MATRIX
+def convert_sranipal_batch(
+    data: np.ndarray,
+    *,
+    matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    将 (N, 37) SRanipal 数据转为 (N, 51) ARKit 权重。
+
+    data: 每行一帧。
+    matrix: 自定义转换矩阵；None 时使用 SRANIPAL_TO_ARKIT_MATRIX。
+    """
+    mat = SRANIPAL_TO_ARKIT_MATRIX if matrix is None else matrix
+    arkit = np.asarray(data, dtype=float) @ mat
     return np.clip(arkit, 0.0, 1.0)

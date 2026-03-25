@@ -53,7 +53,7 @@ DEFAULT_OPEN3D_BACKGROUND_RGB = (0.86, 0.89, 0.93)
 # >1.0 darkens bright albedo (less “plastic shine” under Open3D’s fixed lighting).
 DEFAULT_OPEN3D_VERTEX_MATTE_GAMMA = 1.14
 # Bake soft diffuse into vertex colors and turn off scene lights (reduces plastic specular).
-DEFAULT_OPEN3D_BAKED_SHADING = True
+DEFAULT_OPEN3D_BAKED_SHADING = False
 DEFAULT_OPEN3D_BAKED_AMBIENT = 0.24
 DEFAULT_OPEN3D_BAKED_DIFFUSE = 0.78
 # 无贴图时用法线变化与空间噪声伪造微褶皱/毛孔（Open3D 无法采样材质法线贴图）。
@@ -72,3 +72,5 @@ METAHUMAN_TEETH_OBJECT_NAME = "teeth_ORIGINAL"
 METAHUMAN_EYE_LEFT_OBJECT_NAME = "eyeLeft_ORIGINAL"
 METAHUMAN_EYE_RIGHT_OBJECT_NAME = "eyeRight_ORIGINAL"
 METAHUMAN_FBX = "Metahuman_Head.fbx"
+# Open3D 观感预设名，见 visual_presets.py（neutral_bust / detailed）。
+DEFAULT_OPEN3D_VISUAL_PRESET = "neutral_bust"
