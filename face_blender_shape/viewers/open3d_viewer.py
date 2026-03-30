@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import open3d as o3d
+from numpy.typing import NDArray
 
 from face_blender_shape.constants import DEFAULT_OPEN3D_WINDOW_NAME
 
@@ -26,10 +27,10 @@ class Open3DMeshViewer:
 
     def update(
         self,
-        vertices: np.ndarray,
-        faces: np.ndarray,
+        vertices: NDArray[np.float64],
+        faces: NDArray[np.int64],
         *,
-        vertex_colors: np.ndarray | None = None,
+        vertex_colors: NDArray[np.float64] | None = None,
     ) -> None:
         """
         首次调用时向场景添加网格，之后仅更新顶点、面与法线并重绘。

@@ -2,15 +2,15 @@
 import sys
 from pathlib import Path
 
-import numpy as np
-
-# 项目根目录，用于以脚本方式运行时能 import face_blender_shape
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import numpy as np
+
 from face_blender_shape.constants import BLENDSHAPE_INDEX, FRAME_WIDTH
-from face_blender_shape.paths import OUTPUTS_DIR
+
+OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 
 
 def base_frame(jaw_open: float = 0.18, mouth_ape: float = 0.04) -> np.ndarray:

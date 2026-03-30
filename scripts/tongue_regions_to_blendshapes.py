@@ -21,15 +21,15 @@ import csv
 import sys
 from pathlib import Path
 
-import numpy as np
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from face_blender_shape.constants import BLENDSHAPE_INDEX, BLENDSHAPE_NAMES, FRAME_WIDTH
-from face_blender_shape.paths import OUTPUTS_DIR
+import numpy as np
 
+from face_blender_shape.constants import BLENDSHAPE_INDEX, BLENDSHAPE_NAMES, FRAME_WIDTH
+
+OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 
 # ---------------------------------------------------------------------------
 # I/O
