@@ -13,6 +13,7 @@ from face_blender_shape.constants import (
     METAHUMAN_TEETH_OBJECT_NAME,
 )
 from face_blender_shape.landmarks import (
+    build_mouth_removal_mask,
     extract_default_landmarks,
     get_cheek_keypoints,
     get_cheek_vertices,
@@ -46,8 +47,11 @@ class FaceBlenderRuntime:
         head_object_name: str | None = None,
         texture_path: str | None = None,
         model: str = "sranipal",
+        cutaway: bool = False
     ) -> None:
         self._model = model
+        self._cutaway = cutaway
+        self._cutaway_mask = None
 
         if model == "metahuman":
             from face_blender_shape.blendshape_mapping import (
@@ -307,6 +311,12 @@ class FaceBlenderRuntime:
         if self.viewer is None:
             raise RuntimeError("Viewer is disabled for this runtime instance")
         self._ensure_vertex_colors(faces, len(vertices))
+
+        if self._cutaway:
+            if self._cutaway_mask is None:
+                self._cutaway_mask = build_mouth_removal_mask(faces, vertices)
+            faces = faces[self._cutaway_mask]
+
         self.viewer.update(vertices, faces, vertex_colors=self._vertex_colors)
 
     def update_visualizer(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:

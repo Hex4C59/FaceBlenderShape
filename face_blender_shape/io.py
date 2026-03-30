@@ -10,7 +10,14 @@ from face_blender_shape.paths import resolve_input_csv_path, resolve_output_path
 
 def load_blendshape_csv(path: str | Path) -> np.ndarray:
     resolved = resolve_input_csv_path(path)
-    data = np.loadtxt(resolved, delimiter=",")
+    with open(resolved, "r", encoding="utf-8") as f:
+        first = f.readline().split(",")[0].strip()
+    skiprows = 0
+    try:
+        float(first)
+    except ValueError:
+        skiprows = 1
+    data = np.loadtxt(resolved, delimiter=",", skiprows=skiprows)
     data = np.atleast_2d(data)
 
     if data.shape[1] != FRAME_WIDTH:
