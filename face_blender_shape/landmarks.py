@@ -1,6 +1,20 @@
 from __future__ import annotations
 
+from typing import TypedDict
+
 import numpy as np
+from numpy.typing import NDArray
+
+
+class LandmarkBundle(TypedDict):
+    """单帧网格上的默认关键点集合（不含顶点和面索引）。"""
+
+    lip: NDArray[np.float64]
+    tongue: NDArray[np.float64]
+    cheek: NDArray[np.float64]
+    tongue_tip: NDArray[np.float64]
+    cheek_keypoints: NDArray[np.float64]
+    keypoints: NDArray[np.float64]
 
 TONGUE_SLICE = slice(180, 314)
 LIP_RIGHT_SLICE = slice(5977, 6015)
@@ -40,7 +54,7 @@ def get_cheek_keypoints(cheek_vertices: np.ndarray) -> np.ndarray:
     return np.stack([cheek[29, :], cheek[69, :]], axis=0)
 
 
-def extract_default_landmarks(vertices: np.ndarray | tuple[np.ndarray, np.ndarray]) -> dict[str, np.ndarray]:
+def extract_default_landmarks(vertices: np.ndarray | tuple[np.ndarray, np.ndarray]) -> LandmarkBundle:
     lip = get_lip_vertices(vertices)
     tongue = get_tongue_vertices(vertices)
     cheek = get_cheek_vertices(vertices)

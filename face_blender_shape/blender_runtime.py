@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import TypedDict, cast
+
 import bpy
 import bmesh
 import numpy as np
+from numpy.typing import NDArray
 
 from face_blender_shape.constants import (
     BLENDSHAPE_NAMES,
@@ -27,6 +30,22 @@ from face_blender_shape.paths import (
     resolve_texture_path,
 )
 from face_blender_shape.viewers.open3d_viewer import Open3DMeshViewer
+
+
+class FrameData(TypedDict):
+    """单帧变形网格与关键点，供可视化与导出。"""
+
+    vertices: NDArray[np.float64]
+    faces: NDArray[np.int64]
+    lip: NDArray[np.float64]
+    tongue: NDArray[np.float64]
+    cheek: NDArray[np.float64]
+    tongue_tip: NDArray[np.float64]
+    cheek_keypoints: NDArray[np.float64]
+    keypoints: NDArray[np.float64]
+
+
+BlendshapeInput = NDArray[np.float64] | list[float]
 
 
 class FaceBlenderRuntime:
@@ -213,7 +232,7 @@ class FaceBlenderRuntime:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _validate_frame(blendshapes: np.ndarray | list[float]) -> np.ndarray:
+    def _validate_frame(blendshapes: BlendshapeInput) -> NDArray[np.float64]:
         frame = np.asarray(blendshapes, dtype=float).reshape(-1)
         if frame.size != FRAME_WIDTH:
             raise ValueError(f"Expected {FRAME_WIDTH} blendshape values, got {frame.size}")
@@ -238,7 +257,7 @@ class FaceBlenderRuntime:
             if name in key_blocks:
                 key_blocks[name].value = float(value)
 
-    def set_blendshapes(self, blendshapes: np.ndarray | list[float]):
+    def set_blendshapes(self, blendshapes: BlendshapeInput):
         frame = self._validate_frame(blendshapes)
         bpy.context.view_layer.objects.active = self.active_obj
         bpy.context.object.update_from_editmode()
@@ -274,7 +293,7 @@ class FaceBlenderRuntime:
         bm.free()
         return mesh
 
-    def _get_combined_mesh_data(self, head_obj) -> tuple[np.ndarray, np.ndarray]:
+    def _get_combined_mesh_data(self, head_obj) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
         """Get head + teeth mesh data combined for MetaHuman rendering."""
         h_verts, h_faces = self.get_mesh_data(head_obj)
         if self._teeth_obj is None:
@@ -291,12 +310,12 @@ class FaceBlenderRuntime:
         return combined_verts, combined_faces
 
     @staticmethod
-    def get_mesh_data(obj) -> tuple[np.ndarray, np.ndarray]:
+    def get_mesh_data(obj) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
         vertices = np.array([tuple(vertex.co) for vertex in obj.data.vertices], dtype=float)
         faces = np.array([tuple(face.vertices) for face in obj.data.polygons], dtype=int)
         return vertices, faces
 
-    def extract_frame(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:
+    def extract_frame(self, blendshapes: BlendshapeInput) -> FrameData:
         obj = self.set_blendshapes(blendshapes)
 
         if self._model == "metahuman":
@@ -305,9 +324,9 @@ class FaceBlenderRuntime:
             vertices, faces = self.get_mesh_data(obj)
 
         landmarks = extract_default_landmarks(vertices)
-        return {"vertices": vertices, "faces": faces, **landmarks}
+        return cast(FrameData, {"vertices": vertices, "faces": faces, **landmarks})
 
-    def render(self, vertices: np.ndarray, faces: np.ndarray) -> None:
+    def render(self, vertices: NDArray[np.float64], faces: NDArray[np.int64]) -> None:
         if self.viewer is None:
             raise RuntimeError("Viewer is disabled for this runtime instance")
         self._ensure_vertex_colors(faces, len(vertices))
@@ -319,7 +338,7 @@ class FaceBlenderRuntime:
 
         self.viewer.update(vertices, faces, vertex_colors=self._vertex_colors)
 
-    def update_visualizer(self, blendshapes: np.ndarray | list[float]) -> dict[str, np.ndarray]:
+    def update_visualizer(self, blendshapes: BlendshapeInput) -> FrameData:
         frame = self.extract_frame(blendshapes)
         self.render(frame["vertices"], frame["faces"])
         return frame

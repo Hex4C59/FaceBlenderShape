@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Face Blender Shape: preview",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "face_blender_shape",
+        "args": [
+          "preview",
+          "--path",
+          "${workspaceFolder}/outputs/speaker00044_F_s1_stn00143_blendshapes.csv"
+        ],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "justMyCode": true,
+        "python": "${workspaceFolder}/.venv/bin/python"
+      }
+    ]
+  }
