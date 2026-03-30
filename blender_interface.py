@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument("--path", type=str, help="CSV sequence with 37 blendshape columns")
     parser.add_argument("--fps", type=float, default=DEFAULT_PLAYBACK_FPS, help="Playback FPS for CSV sequences")
     parser.add_argument("--fbx", type=str, help="Override FBX path")
-    parser.add_argument("--texture", type=str, help="Skin texture image path (auto-detects from assets/textures/)")
+    parser.add_argument("--texture", type=str, help="Skin texture image path (optional; uses bpy material texture if omitted)")
     parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"], help="Model backend (default: sranipal)")
     args = parser.parse_args()
 
