@@ -55,3 +55,29 @@ def extract_default_landmarks(vertices: np.ndarray | tuple[np.ndarray, np.ndarra
         "cheek_keypoints": cheek_keypoints,
         "keypoints": keypoints,
     }
+
+def build_mouth_removal_mask(
+    faces: np.ndarray,
+    vertices: np.ndarray,
+    *,
+    margin: float = 0.01,
+) -> np.ndarray:
+    """以舌头包围盒为基准，移除附近所有非舌头面（牙齿 + 脸颊外皮），在侧面打开窗口。
+
+    faces: 三角面索引数组 shape (F, 3)。
+    vertices: 顶点坐标数组 shape (V, 3)。
+    margin: 包围盒向外扩展的距离，越大窗口越大。
+    返回: shape (F,) 布尔数组，True = 保留。
+    """
+    tongue_lo, tongue_hi = TONGUE_SLICE.start, TONGUE_SLICE.stop
+    tongue_verts = vertices[tongue_lo:tongue_hi]
+
+    bbox_min = tongue_verts.min(axis=0) - margin
+    bbox_max = tongue_verts.max(axis=0) + margin
+
+    centroids = vertices[faces].mean(axis=1)
+    inside_bbox = np.all((centroids >= bbox_min) & (centroids <= bbox_max), axis=1)
+
+    is_tongue = np.any((faces >= tongue_lo) & (faces < tongue_hi), axis=1)
+
+    return ~inside_bbox | is_tongue

@@ -18,9 +18,10 @@ def preview_sequence(
     fbx_path: str | None = None,
     texture_path: str | None = None,
     model: str = "sranipal",
+    cutaway = False,
 ) -> None:
     data = load_blendshape_csv(path)
-    runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=True, texture_path=texture_path, model=model)
+    runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=True, texture_path=texture_path, model=model, cutaway=cutaway)
     frame_delay = 1.0 / fps if fps > 0 else 0.0
 
     for idx, blendshapes in enumerate(data, start=1):
@@ -45,6 +46,7 @@ def convert_csv_to_keypoints(
     visualize: bool = False,
 ) -> Path:
     data = load_blendshape_csv(path)
+    print(type(data))
     runtime = FaceBlenderRuntime(path=fbx_path, enable_viewer=visualize)
 
     vertices_frames = []
@@ -95,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     preview_parser.add_argument("--fbx", type=str, help="Override FBX path")
     preview_parser.add_argument("--texture", type=str, help="Skin texture image path (auto-detects from assets/textures/)")
     preview_parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"], help="Model backend (default: sranipal)")
+    preview_parser.add_argument("--cutaway", action="store_true", help="移除唇部面片，露出口腔内舌头")
     preview_parser.set_defaults(handler=handle_preview_command)
 
     convert_parser = subparsers.add_parser("convert", help="Convert a blendshape CSV into NPZ keypoints")
@@ -109,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def handle_preview_command(args: argparse.Namespace) -> int:
     if args.path:
-        preview_sequence(args.path, args.fps, fbx_path=args.fbx, texture_path=args.texture, model=args.model)
+        preview_sequence(args.path, args.fps, fbx_path=args.fbx, texture_path=args.texture, model=args.model, cutaway=args.cutaway)
     else:
         preview_all_shapes(fbx_path=args.fbx, texture_path=args.texture, model=args.model)
     return 0
