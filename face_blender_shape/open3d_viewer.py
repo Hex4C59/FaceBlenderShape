@@ -57,7 +57,6 @@ class Open3DMeshViewer:
         *,
         shell_edges: NDArray[np.int64],
         tongue_faces: NDArray[np.int64],
-        tongue_vertex_colors: NDArray[np.float64] | None,
     ) -> None:
         """刷新「紧凑外壳线框 + 紧凑舌实体」：每帧更新两侧顶点坐标，棱与舌面拓扑不变。
 
@@ -65,7 +64,6 @@ class Open3DMeshViewer:
         :param tongue_vertices: 舌子网格顶点，形状 (Kt, 3)。
         :param shell_edges: 外壳局部顶点下标构成的线段对，形状 (E, 2)。
         :param tongue_faces: 舌三角面局部下标，形状 (T, 3)。
-        :param tongue_vertex_colors: 舌子网格每顶点 RGB，形状 (Kt, 3)；None 时用默认肤色。
         """
         if self._line_set is None:
             self._line_set = o3d.geometry.LineSet()
@@ -82,14 +80,9 @@ class Open3DMeshViewer:
             self._tongue_mesh.triangles = o3d.utility.Vector3iVector(
                 tongue_faces.astype(np.int32, copy=False)
             )
-            if tongue_vertex_colors is not None:
-                self._tongue_mesh.vertex_colors = o3d.utility.Vector3dVector(
-                    tongue_vertex_colors
-                )
-            else:
-                self._tongue_mesh.vertex_colors = o3d.utility.Vector3dVector(
-                    np.tile(SKIN_TONE, (len(tongue_vertices), 1))
-                )
+            self._tongue_mesh.vertex_colors = o3d.utility.Vector3dVector(
+                np.tile(SKIN_TONE, (len(tongue_vertices), 1))
+            )
             self._tongue_mesh.compute_vertex_normals()
 
             self._visualizer.add_geometry(self._line_set)
@@ -115,26 +108,15 @@ class Open3DMeshViewer:
         self,
         vertices: NDArray[np.float64],
         faces: NDArray[np.int64],
-        *,
-        vertex_colors: NDArray[np.float64] | None,
     ) -> None:
-        """整头实体三角网格模式下的顶点与面刷新。
-
-        :param vertices: 顶点坐标，形状 (N, 3)。
-        :param faces: 三角面索引，形状 (M, 3)。
-        :param vertex_colors: 可选每顶点 RGB，形状 (N, 3)。
-        """
+        """整头实体三角网格模式下的顶点与面刷新（固定默认肤色）。"""
         if self._mesh is None:
             self._mesh = o3d.geometry.TriangleMesh()
             self._mesh.vertices = o3d.utility.Vector3dVector(vertices)
             self._mesh.triangles = o3d.utility.Vector3iVector(faces)
-
-            if vertex_colors is not None:
-                self._mesh.vertex_colors = o3d.utility.Vector3dVector(vertex_colors)
-            else:
-                self._mesh.vertex_colors = o3d.utility.Vector3dVector(
-                    np.tile(SKIN_TONE, (len(vertices), 1))
-                )
+            self._mesh.vertex_colors = o3d.utility.Vector3dVector(
+                np.tile(SKIN_TONE, (len(vertices), 1))
+            )
 
             self._mesh.compute_vertex_normals()
             self._visualizer.add_geometry(self._mesh)
@@ -155,24 +137,22 @@ class Open3DMeshViewer:
         vertices: NDArray[np.float64],
         faces: NDArray[np.int64],
         *,
-        vertex_colors: NDArray[np.float64] | None = None,
         shell_edges: NDArray[np.int64] | None = None,
         tongue_faces: NDArray[np.int64] | None = None,
         shell_vertices: NDArray[np.float64] | None = None,
         tongue_vertices: NDArray[np.float64] | None = None,
-        tongue_vertex_colors: NDArray[np.float64] | None = None,
     ) -> None:
         """
         首次调用时向场景添加几何体，之后仅更新顶点（及线框模式下的法线）并重绘。
 
-        :param vertices: 实体模式下为全部顶点 (N,3)；线框模式下占位，可与首帧一致。
-        :param faces: 实体模式下的三角面 (M,3)；线框模式下占位。
-        :param vertex_colors: 实体模式每顶点 RGB (N,3)。
+        线框模式下 ``vertices`` / ``faces`` 仅占位，实际绘制用 shell / tongue 子网格参数。
+
+        :param vertices: 实体模式为全部顶点 (N,3)；线框模式可传占位（与首帧一致即可）。
+        :param faces: 实体模式下的三角面 (M,3)；线框模式可传占位。
         :param shell_edges: 线框模式必填，外壳紧凑网格的线段对 (E,2)。
         :param tongue_faces: 线框模式必填，舌紧凑三角面 (T,3)。
         :param shell_vertices: 线框模式必填，外壳紧凑顶点 (Ks,3)。
         :param tongue_vertices: 线框模式必填，舌紧凑顶点 (Kt,3)。
-        :param tongue_vertex_colors: 线框模式下舌子网格顶点色 (Kt,3)。
         """
         if self._wireframe_head:
             if (
@@ -190,7 +170,6 @@ class Open3DMeshViewer:
                 tongue_vertices,
                 shell_edges=shell_edges,
                 tongue_faces=tongue_faces,
-                tongue_vertex_colors=tongue_vertex_colors,
             )
             return
 
@@ -199,8 +178,7 @@ class Open3DMeshViewer:
             or tongue_faces is not None
             or shell_vertices is not None
             or tongue_vertices is not None
-            or tongue_vertex_colors is not None
         ):
             raise ValueError("实体模式下不应传入线框紧凑子网格参数")
 
-        self._update_solid_mesh(vertices, faces, vertex_colors=vertex_colors)
+        self._update_solid_mesh(vertices, faces)
