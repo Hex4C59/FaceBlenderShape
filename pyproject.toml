@@ -93,7 +93,7 @@ explicit = true
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["E402"]
 
-# typings/ 下为 Blender 等仅在运行时存在的模块提供存根，消除无法解析导入。
+# typings/ 下为 Blender、Open3D 等无类型信息或需覆盖的模块提供存根。
 [tool.basedpyright]
 stubPath = "typings"
 
