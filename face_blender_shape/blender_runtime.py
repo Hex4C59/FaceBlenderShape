@@ -28,6 +28,8 @@ from face_blender_shape.landmarks import (
     get_cheek_keypoints,
     get_cheek_vertices,
     get_lip_vertices,
+    split_head_tongue_meshes,
+    unique_edges_from_faces,
     get_tongue_tip,
     get_tongue_vertices,
 )
@@ -125,6 +127,7 @@ class FaceBlenderRuntime:
         head_object_name: str | None = None,
         texture_path: str | None = None,
         cutaway: bool = False,
+        wireframe_head: bool = False,
     ) -> None:
         """
         初始化运行时：加载 FBX、绑定活动头对象、可选 Open3D 窗口与贴图。
@@ -136,9 +139,15 @@ class FaceBlenderRuntime:
             head_object_name: 场景中头网格对象名；为 None 时使用 ``DEFAULT_HEAD_OBJECT_NAME``。
             texture_path: 外置 albedo 贴图路径；为 None 时尽量从材质读取。
             cutaway: 是否在渲染时裁掉口腔区域（需配合 landmarks 掩码）。
+            wireframe_head: 是否仅将头壳画为线框、舌区域保持实体贴图/顶点色（与 cutaway 互斥，优先于 cutaway）。
         """
         self._cutaway = cutaway  # True 时 render 会裁掉口腔附近面片
         self._cutaway_mask = None  # 懒计算：首帧根据舌包围盒生成 (F,) 布尔掩码
+        self._wireframe_head = wireframe_head  # True 时 Open3D 用紧凑外壳 LineSet + 紧凑舌网格
+        self._wf_shell_edges: NDArray[np.int64] | None = None  # 外壳紧凑网格上的无向边 (E,2)，局部下标
+        self._wf_tongue_faces: NDArray[np.int64] | None = None  # 舌紧凑三角面 (T,3)，局部下标
+        self._wf_shell_global_idx: NDArray[np.int64] | None = None  # 外壳紧凑顶点对应的全局顶点下标
+        self._wf_tongue_global_idx: NDArray[np.int64] | None = None  # 舌紧凑顶点对应的全局顶点下标
 
         head_object_name = head_object_name or DEFAULT_HEAD_OBJECT_NAME
 
@@ -150,8 +159,18 @@ class FaceBlenderRuntime:
         self._triangle_uvs: NDArray[np.float64] | None = None  # 首帧从求值 mesh 抽 UV，供烘焙顶点色
         self._vertex_colors: NDArray[np.float64] | None = None  # 由贴图+UV 烘焙，懒算
 
+        # ---- 帧缓存：首帧三角化后复用面索引与顶点缓冲，避免逐帧 bmesh 求值 ----
+        self._cached_faces: NDArray[np.int64] | None = None
+        self._n_verts: int = 0
+        self._co_buf: NDArray[np.float32] | None = None
+
         self.viewer = (
-            Open3DMeshViewer(window_name=window_name) if enable_viewer else None
+            Open3DMeshViewer(
+                window_name=window_name,
+                wireframe_head=wireframe_head,
+            )
+            if enable_viewer
+            else None
         )  # 关闭时 extract_frame 仍可用，render 会报错
 
     def load_fbx(self, path: str | None) -> None:
@@ -172,13 +191,17 @@ class FaceBlenderRuntime:
 
     def set_active_object(self, object_name: str = DEFAULT_HEAD_OBJECT_NAME) -> None:
         """
-        将指定名称的对象设为活动对象并绑定到当前视图层。
+        将指定名称的对象设为活动对象并绑定到当前视图层，同时缓存 shape key 引用。
 
         参数:
             object_name: 场景中要驱动 blendshape 的网格对象名。
         """
         self.active_obj = bpy.data.objects[object_name]
         bpy.context.view_layer.objects.active = self.active_obj
+        self._key_blocks: list[Any] = [
+            self.active_obj.data.shape_keys.key_blocks[name]
+            for name in BLENDSHAPE_NAMES
+        ]
 
     # ---------- 贴图加载 ----------
 
@@ -300,15 +323,18 @@ class FaceBlenderRuntime:
     @staticmethod
     def _extract_triangle_uvs(mesh: Any) -> NDArray[np.float64] | None:
         """
-        读取网格活动 UV 层，按 loop 顺序展开为每行 (u, v) 的数组。
+        用 foreach_get 批量提取网格活动 UV 层，返回每行 (u, v) 的数组。
 
         参数:
-            mesh: 已应用修改器后的 bpy 网格数据。
+            mesh: 已三角化的 bpy 网格数据。
         """
         if not mesh.uv_layers:
             return None
         uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
-        return np.array([tuple(d.uv) for d in uv_layer.data], dtype=float)
+        n = len(uv_layer.data)
+        buf = np.empty(n * 2, dtype=np.float32)
+        uv_layer.data.foreach_get("uv", buf)
+        return buf.reshape(n, 2).astype(np.float64)
 
     # ---------- Blendshape 与网格管线 ----------
 
@@ -327,36 +353,11 @@ class FaceBlenderRuntime:
             )
         return frame
 
-    def set_blendshapes(self, blendshapes: BlendshapeInput) -> Any:
+    # ---------- 快速帧求值管线 ----------
+
+    def _get_triangulated_mesh(self, obj: Any, cage: bool = False) -> Any:
         """
-        应用一帧 blendshape，从 depsgraph 取出变形网格并返回临时对象副本。
-
-        参数:
-            blendshapes: 长度为 FRAME_WIDTH 的 SRanipal 权重向量。
-
-        返回:
-            带有当前变形 mesh 数据的对象副本（modifiers 已清空），供后续读顶点/面。
-        """
-        frame = self._validate_frame(blendshapes)
-        bpy.context.view_layer.objects.active = self.active_obj
-        bpy.context.object.update_from_editmode()
-
-        for heading, value in zip(self.blendshape_names, frame):
-            self.active_obj.data.shape_keys.key_blocks[heading].value = float(value)
-
-        obj = bpy.context.object.copy()
-        mesh = self.get_modified_mesh(self.active_obj)
-
-        if self._triangle_uvs is None:
-            self._triangle_uvs = self._extract_triangle_uvs(mesh)
-
-        obj.modifiers.clear()
-        obj.data = mesh
-        return obj
-
-    def get_modified_mesh(self, obj: Any, cage: bool = False) -> Any:
-        """
-        从依赖图求值对象，三角化后得到新的 Mesh 数据块。
+        从依赖图求值对象，三角化后得到新的 Mesh 数据块（仅首帧调用）。
 
         若存在 ``bmesh``（完整 Blender），用 bmesh 求值并三角化（保留 UV 等层）。
         否则使用 ``to_mesh`` + 扇形三角化，适用于 PyPI ``bpy`` wheel（无 bmesh 模块）。
@@ -380,30 +381,156 @@ class FaceBlenderRuntime:
         return _modified_mesh_without_bmesh(obj, cage)
 
     @staticmethod
+    def _read_mesh_vertices_fast(mesh: Any, n_verts: int) -> NDArray[np.float64]:
+        """
+        用 foreach_get 批量读取 bpy 网格顶点坐标（C 层循环，比 Python 列表推导快约 10 倍）。
+
+        参数:
+            mesh: bpy 网格数据块。
+            n_verts: 顶点数量。
+        """
+        buf = np.empty(n_verts * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", buf)
+        return buf.reshape(n_verts, 3).astype(np.float64)
+
+    @staticmethod
+    def _read_mesh_faces_fast(mesh: Any) -> NDArray[np.int64]:
+        """
+        用 foreach_get 批量读取已三角化网格的面索引（要求所有面均为三角形）。
+
+        参数:
+            mesh: 已三角化的 bpy 网格数据块。
+        """
+        n_loops = len(mesh.loops)
+        buf = np.empty(n_loops, dtype=np.int32)
+        mesh.loops.foreach_get("vertex_index", buf)
+        return buf.reshape(-1, 3).astype(np.int64)
+
+    def _evaluate_first_frame(
+        self, frame: NDArray[np.float64]
+    ) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+        """
+        首帧完整路径：写 shape key → bmesh 三角化 → 缓存面/UV/顶点数 → 返回顶点与面。
+
+        参数:
+            frame: 已校验的一帧 blendshape 权重向量。
+        """
+        bpy.context.view_layer.objects.active = self.active_obj
+        bpy.context.object.update_from_editmode()
+
+        for kb, val in zip(self._key_blocks, frame):
+            kb.value = float(val)
+
+        mesh = self._get_triangulated_mesh(self.active_obj)
+
+        if self._triangle_uvs is None:
+            self._triangle_uvs = self._extract_triangle_uvs(mesh)
+
+        n_verts = len(mesh.vertices)
+        vertices = self._read_mesh_vertices_fast(mesh, n_verts)
+        faces = self._read_mesh_faces_fast(mesh)
+
+        self._cached_faces = faces
+        self._n_verts = n_verts
+        self._co_buf = np.empty(n_verts * 3, dtype=np.float32)
+
+        bpy.data.meshes.remove(mesh)
+        return vertices, faces
+
+    def _evaluate_fast(
+        self, frame: NDArray[np.float64]
+    ) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+        """
+        后续帧快速路径：只写 shape key 值，从 depsgraph 求值读回顶点，复用缓存面。
+
+        参数:
+            frame: 已校验的一帧 blendshape 权重向量。
+        """
+        for kb, val in zip(self._key_blocks, frame):
+            kb.value = float(val)
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        depsgraph.update()
+        obj_eval = self.active_obj.evaluated_get(depsgraph)
+
+        try:
+            mesh_eval = obj_eval.to_mesh(depsgraph=depsgraph)
+        except TypeError:
+            mesh_eval = obj_eval.to_mesh()
+
+        assert self._co_buf is not None
+        mesh_eval.vertices.foreach_get("co", self._co_buf)
+        obj_eval.to_mesh_clear()
+
+        vertices = self._co_buf.reshape(self._n_verts, 3).astype(np.float64)
+        assert self._cached_faces is not None
+        return vertices, self._cached_faces
+
+    def extract_frame(self, blendshapes: BlendshapeInput) -> FrameData:
+        """
+        应用 blendshape 并输出顶点、面及默认 landmarks 字典。
+        首帧走完整三角化路径；后续帧仅更新顶点位置（复用缓存的面索引）。
+
+        参数:
+            blendshapes: 一帧 SRanipal 维度权重。
+        """
+        frame = self._validate_frame(blendshapes)
+        if self._cached_faces is None:
+            vertices, faces = self._evaluate_first_frame(frame)
+        else:
+            vertices, faces = self._evaluate_fast(frame)
+
+        landmarks = extract_default_landmarks(vertices)
+        return cast(FrameData, {"vertices": vertices, "faces": faces, **landmarks})
+
+    # ---------- 兼容旧接口（非热路径） ----------
+
+    def set_blendshapes(self, blendshapes: BlendshapeInput) -> Any:
+        """
+        应用一帧 blendshape，从 depsgraph 取出变形网格并返回临时对象副本。
+        注意：此方法保留以兼容外部调用，热路径已改为 extract_frame 内部直连。
+
+        参数:
+            blendshapes: 长度为 FRAME_WIDTH 的 SRanipal 权重向量。
+
+        返回:
+            带有当前变形 mesh 数据的对象副本（modifiers 已清空），供后续读顶点/面。
+        """
+        frame = self._validate_frame(blendshapes)
+        bpy.context.view_layer.objects.active = self.active_obj
+        bpy.context.object.update_from_editmode()
+
+        for kb, val in zip(self._key_blocks, frame):
+            kb.value = float(val)
+
+        obj = bpy.context.object.copy()
+        mesh = self._get_triangulated_mesh(self.active_obj)
+
+        if self._triangle_uvs is None:
+            self._triangle_uvs = self._extract_triangle_uvs(mesh)
+
+        obj.modifiers.clear()
+        obj.data = mesh
+        return obj
+
+    @staticmethod
     def get_mesh_data(obj: Any) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
         """
-        从对象当前 mesh 数据读取顶点坐标与多边形顶点索引（未三角化时按多边形边数）。
+        从对象当前 mesh 数据读取顶点坐标与多边形顶点索引。
 
         参数:
             obj: 其 data 为 Mesh 的场景对象。
         """
         mesh = obj.data
-        vertices = np.array([tuple(v.co) for v in mesh.vertices], dtype=float)
-        faces = np.array([tuple(p.vertices) for p in mesh.polygons], dtype=int)
+        n_verts = len(mesh.vertices)
+        co = np.empty(n_verts * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", co)
+        vertices = co.reshape(n_verts, 3).astype(np.float64)
+        n_loops = len(mesh.loops)
+        vi = np.empty(n_loops, dtype=np.int32)
+        mesh.loops.foreach_get("vertex_index", vi)
+        faces = vi.reshape(-1, 3).astype(np.int64)
         return vertices, faces
-
-    def extract_frame(self, blendshapes: BlendshapeInput) -> FrameData:
-        """
-        应用 blendshape 并输出顶点、面及默认 landmarks 字典。
-
-        参数:
-            blendshapes: 一帧 SRanipal 维度权重。
-        """
-        obj = self.set_blendshapes(blendshapes)
-        vertices, faces = self.get_mesh_data(obj)
-
-        landmarks = extract_default_landmarks(vertices)
-        return cast(FrameData, {"vertices": vertices, "faces": faces, **landmarks})
 
     def render(self, vertices: NDArray[np.float64], faces: NDArray[np.int64]) -> None:
         """
@@ -416,6 +543,30 @@ class FaceBlenderRuntime:
         if self.viewer is None:
             raise RuntimeError("Viewer is disabled for this runtime instance")
         self._ensure_vertex_colors(faces, len(vertices))
+
+        if self._wireframe_head:
+            if self._wf_shell_edges is None:
+                shell, tongue = split_head_tongue_meshes(vertices, faces)
+                _, shell_faces, self._wf_shell_global_idx = shell
+                _, self._wf_tongue_faces, self._wf_tongue_global_idx = tongue
+                self._wf_shell_edges = unique_edges_from_faces(shell_faces)
+            shell_vertices = vertices[self._wf_shell_global_idx]
+            tongue_vertices = vertices[self._wf_tongue_global_idx]
+            tongue_colors = (
+                self._vertex_colors[self._wf_tongue_global_idx]
+                if self._vertex_colors is not None
+                else None
+            )
+            self.viewer.update(
+                vertices,
+                faces,
+                shell_vertices=shell_vertices,
+                tongue_vertices=tongue_vertices,
+                tongue_vertex_colors=tongue_colors,
+                shell_edges=self._wf_shell_edges,
+                tongue_faces=self._wf_tongue_faces,
+            )
+            return
 
         if self._cutaway:
             if self._cutaway_mask is None:
