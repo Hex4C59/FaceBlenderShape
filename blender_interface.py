@@ -4,29 +4,28 @@ import argparse
 from face_blender_shape.cli import preview_all_shapes, preview_sequence
 from face_blender_shape.constants import DEFAULT_PLAYBACK_FPS
 
+
 def play_sequence(
     path: str,
     fps: float = DEFAULT_PLAYBACK_FPS,
     *,
     fbx_path: str | None = None,
     texture_path: str | None = None,
-    model: str = "sranipal",
-    ):
+) -> None:
     """按指定帧率播放 CSV blendshape 序列。
 
-    path: CSV 文件路径（37 列 blendshape）。
-    fps: 播放帧率。
-    fbx_path: 可选，覆盖默认 FBX 模型路径。
-    texture_path: 可选，皮肤贴图路径。
-    model: 后端模型标识，如 sranipal / metahuman。
+    参数:
+        path: CSV 文件路径（37 列 blendshape）。
+        fps: 播放帧率。
+        fbx_path: 可选，覆盖默认 FBX 模型路径。
+        texture_path: 可选，皮肤贴图路径。
     """
     preview_sequence(
         path,
         fps,
         fbx_path=fbx_path,
-        texture_path=texture_path, 
-        model=model
-        )
+        texture_path=texture_path,
+    )
 
 
 def main() -> None:
@@ -36,13 +35,12 @@ def main() -> None:
     parser.add_argument("--fps", type=float, default=DEFAULT_PLAYBACK_FPS, help="Playback FPS for CSV sequences")
     parser.add_argument("--fbx", type=str, help="Override FBX path")
     parser.add_argument("--texture", type=str, help="Skin texture image path (optional; uses bpy material texture if omitted)")
-    parser.add_argument("--model", type=str, default="sranipal", choices=["sranipal", "metahuman"], help="Model backend (default: sranipal)")
     args = parser.parse_args()
 
     if args.path:
-        play_sequence(args.path, args.fps, fbx_path=args.fbx, texture_path=args.texture, model=args.model)
+        play_sequence(args.path, args.fps, fbx_path=args.fbx, texture_path=args.texture)
     else:
-        preview_all_shapes(fbx_path=args.fbx, texture_path=args.texture, model=args.model)
+        preview_all_shapes(fbx_path=args.fbx, texture_path=args.texture)
 
 
 if __name__ == "__main__":
