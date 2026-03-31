@@ -48,7 +48,6 @@ def preview_sequence(
 
     runtime = FaceBlenderRuntime(
         path=fbx_path,
-        enable_viewer=True,  # 启用 Open3D 网格查看器（关闭则无可视化）
         wireframe_head=wireframe_head,  # True 时头壳 LineSet、舌三角面实体
     )
     frame_delay = 1.0 / fps if fps > 0 else 0.0  # 相邻两帧之间的间隔（秒）；fps≤0 时不等待

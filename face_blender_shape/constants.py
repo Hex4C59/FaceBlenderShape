@@ -55,4 +55,3 @@ FRAME_WIDTH: int = len(BLENDSHAPE_NAMES)
 
 DEFAULT_PLAYBACK_FPS: float = 30.0  # CLI 顺序预览时相邻帧 sleep 依据
 DEFAULT_OPEN3D_WINDOW_NAME: str = "Face Blender Shape Viewer"
-DEFAULT_HEAD_OBJECT_NAME: str = "Head"  # 默认 FBX 中驱动 blendshape 的网格对象名
