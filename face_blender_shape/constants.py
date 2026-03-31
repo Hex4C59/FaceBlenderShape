@@ -55,10 +55,4 @@ FRAME_WIDTH: int = len(BLENDSHAPE_NAMES)
 
 DEFAULT_PLAYBACK_FPS: float = 30.0  # CLI 顺序预览时相邻帧 sleep 依据
 DEFAULT_OPEN3D_WINDOW_NAME: str = "Face Blender Shape Viewer"
-DEFAULT_HEAD_OBJECT_NAME: str = "Head"  # SRanipal 默认 FBX 中驱动 blendshape 的网格对象名
-
-# ---------- MetaHuman 资源（导入场景中的对象名 / 文件名）----------
-
-METAHUMAN_HEAD_OBJECT_NAME: str = "head_lod0_ORIGINAL"
-METAHUMAN_TEETH_OBJECT_NAME: str = "teeth_ORIGINAL"
-METAHUMAN_FBX: str = "Metahuman_Head.fbx"  # 相对包内 assets/models 使用的文件名
+DEFAULT_HEAD_OBJECT_NAME: str = "Head"  # 默认 FBX 中驱动 blendshape 的网格对象名

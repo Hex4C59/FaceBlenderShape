@@ -22,7 +22,6 @@ def preview_sequence(
     *,
     fbx_path: str | None = None,
     texture_path: str | None = None,
-    model: str = "sranipal",
     cutaway: bool = False,
 ) -> None:
     """按顺序预览一段 blendshape CSV。
@@ -32,16 +31,14 @@ def preview_sequence(
         fps: 预览帧率；小于等于 0 时不主动 sleep。
         fbx_path: 可选的 FBX 路径，用于覆盖默认模型资源。
         texture_path: 可选的贴图路径。
-        model: 模型后端名称，可选 sranipal 或 metahuman。
         cutaway: 是否移除嘴部部分面片以观察口腔内部。
     """
     data: NDArray[np.float64] = load_blendshape_csv(path)
     # 在 Blender 中加载头模、绑定 blendshape，并创建 Open3D 预览窗口。
     runtime = FaceBlenderRuntime(
-        path=fbx_path,  
+        path=fbx_path,
         enable_viewer=True,  # 启用 Open3D 网格查看器（关闭则无可视化）
         texture_path=texture_path,  # 外置 albedo；为 None 时尽量从材质读取或不加载
-        model=model,  # 后端：sranipal（37 维）或 metahuman（经映射驱动 ARKit）
         cutaway=cutaway,  # True 时裁掉口腔区域三角面，便于看内部
     )
     frame_delay = 1.0 / fps if fps > 0 else 0.0  # 相邻两帧之间的间隔（秒）；fps≤0 时不等待
@@ -60,20 +57,17 @@ def preview_all_shapes(
     *,
     fbx_path: str | None = None,
     texture_path: str | None = None,
-    model: str = "sranipal",
 ) -> None:
     """用统一数值扫过全部 blendshape 通道，方便检查模型响应。
 
     参数:
         fbx_path: 可选的 FBX 路径，用于覆盖默认模型资源。
         texture_path: 可选的贴图路径。
-        model: 模型后端名称，可选 sranipal 或 metahuman。
     """
     runtime: FaceBlenderRuntime = FaceBlenderRuntime(
         path=fbx_path,
         enable_viewer=True,
         texture_path=texture_path,
-        model=model,
     )
 
     for value in np.linspace(0.0, 1.0, 100):
@@ -113,13 +107,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skin texture image path (optional; uses bpy material texture if omitted)",
     )
     preview_parser.add_argument(
-        "--model",
-        type=str,
-        default="sranipal",
-        choices=["sranipal", "metahuman"],
-        help="Model backend (default: sranipal)",
-    )
-    preview_parser.add_argument(
         "--cutaway",
         action="store_true",
         help="移除唇部面片，露出口腔内舌头",
@@ -140,7 +127,6 @@ def handle_preview_command(args: argparse.Namespace) -> int:
             args.fps,
             fbx_path=args.fbx,
             texture_path=args.texture,
-            model=args.model,
             cutaway=args.cutaway,
         )
         return 0
@@ -148,7 +134,6 @@ def handle_preview_command(args: argparse.Namespace) -> int:
     preview_all_shapes(
         fbx_path=args.fbx,
         texture_path=args.texture,
-        model=args.model,
     )
     return 0
 
