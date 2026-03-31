@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
 import bpy
 import numpy as np
@@ -21,21 +21,14 @@ from face_blender_shape.constants import (
     FRAME_WIDTH,
 )
 
-# 默认头模顶点切片：唇/舌/颊关键点、整帧 landmark 打包、口腔裁切面布尔掩码。
+# 头舌网格拆分与线框边（与默认 FBX 舌顶点下标一致）。
 from face_blender_shape.landmarks import (
-    build_mouth_removal_mask,
-    extract_default_landmarks,
-    get_cheek_keypoints,
-    get_cheek_vertices,
-    get_lip_vertices,
     split_head_tongue_meshes,
     unique_edges_from_faces,
-    get_tongue_tip,
-    get_tongue_vertices,
 )
 
 # 变形网格的实时三角网格窗口（与 Blender 求值结果对接）。
-from face_blender_shape.viewers.open3d_viewer import Open3DMeshViewer
+from face_blender_shape.open3d_viewer import Open3DMeshViewer
 
 # 资源根目录与默认 FBX 路径（相对本包上级目录的 assets）
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +44,7 @@ def _fan_triangulate_to_new_mesh(mesh_eval: Any) -> Any:
         mesh_eval: ``to_mesh`` 得到的临时 ``Mesh``；本函数只读其顶点与多边形。
 
     返回:
-        新的三角网格 ``Mesh``。不复制 UV 层（无 bmesh 时贴图烘焙可能缺少 UV）。
+        新的三角网格 ``Mesh``。不复制 UV 层（无 bmesh 时扇形三角化会丢 UV）。
     """
     verts = [tuple(v.co) for v in mesh_eval.vertices]
     tris: list[tuple[int, int, int]] = []
@@ -100,19 +93,10 @@ def _modified_mesh_without_bmesh(obj: Any, cage: bool) -> Any:
 
 
 class FrameData(TypedDict):
-    """单帧变形网格与关键点，供可视化与导出。"""
+    """单帧变形网格（顶点 + 三角面）。"""
 
     vertices: NDArray[np.float64]
     faces: NDArray[np.int64]
-    lip: NDArray[np.float64]
-    tongue: NDArray[np.float64]
-    cheek: NDArray[np.float64]
-    tongue_tip: NDArray[np.float64]
-    cheek_keypoints: NDArray[np.float64]
-    keypoints: NDArray[np.float64]
-
-
-BlendshapeInput = NDArray[np.float64] | list[float]
 
 
 class FaceBlenderRuntime:
@@ -125,39 +109,43 @@ class FaceBlenderRuntime:
         enable_viewer: bool = True,
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
         head_object_name: str | None = None,
-        texture_path: str | None = None,
-        cutaway: bool = False,
         wireframe_head: bool = False,
     ) -> None:
         """
-        初始化运行时：加载 FBX、绑定活动头对象、可选 Open3D 窗口与贴图。
+        初始化运行时：加载 FBX、绑定活动头对象、可选 Open3D 窗口。
 
         参数:
             path: FBX 文件路径；为 None 时使用包内默认 SRanipal 头模。
             enable_viewer: 是否创建 Open3D 网格查看器。
             window_name: Open3D 窗口标题。
             head_object_name: 场景中头网格对象名；为 None 时使用 ``DEFAULT_HEAD_OBJECT_NAME``。
-            texture_path: 外置 albedo 贴图路径；为 None 时尽量从材质读取。
-            cutaway: 是否在渲染时裁掉口腔区域（需配合 landmarks 掩码）。
-            wireframe_head: 是否仅将头壳画为线框、舌区域保持实体贴图/顶点色（与 cutaway 互斥，优先于 cutaway）。
+            wireframe_head: 是否仅将头壳画为线框、舌区域保持实体（Open3D 默认肤色）。
         """
-        self._cutaway = cutaway  # True 时 render 会裁掉口腔附近面片
-        self._cutaway_mask = None  # 懒计算：首帧根据舌包围盒生成 (F,) 布尔掩码
-        self._wireframe_head = wireframe_head  # True 时 Open3D 用紧凑外壳 LineSet + 紧凑舌网格
-        self._wf_shell_edges: NDArray[np.int64] | None = None  # 外壳紧凑网格上的无向边 (E,2)，局部下标
-        self._wf_tongue_faces: NDArray[np.int64] | None = None  # 舌紧凑三角面 (T,3)，局部下标
-        self._wf_shell_global_idx: NDArray[np.int64] | None = None  # 外壳紧凑顶点对应的全局顶点下标
-        self._wf_tongue_global_idx: NDArray[np.int64] | None = None  # 舌紧凑顶点对应的全局顶点下标
+        self._wireframe_head = (
+            wireframe_head  # True 时 Open3D 用紧凑外壳 LineSet + 紧凑舌网格
+        )
+        self._wf_shell_edges: NDArray[np.int64] | None = (
+            None  # 外壳紧凑网格上的无向边 (E,2)，局部下标
+        )
+        self._wf_tongue_faces: NDArray[np.int64] | None = (
+            None  # 舌紧凑三角面 (T,3)，局部下标
+        )
+        self._wf_shell_global_idx: NDArray[np.int64] | None = (
+            None  # 外壳紧凑顶点对应的全局顶点下标
+        )
+        self._wf_tongue_global_idx: NDArray[np.int64] | None = (
+            None  # 舌紧凑顶点对应的全局顶点下标
+        )
 
         head_object_name = head_object_name or DEFAULT_HEAD_OBJECT_NAME
 
-        self.blendshape_names = np.array(BLENDSHAPE_NAMES)  # 与 CSV 列顺序一致，供 set_blendshapes 按名写权重
+        self.blendshape_names = np.array(
+            BLENDSHAPE_NAMES
+        )  # 与 CSV 列顺序一致，与 _key_blocks 一一对应
         self.load_fbx(path)  # 将 FBX 导入当前 bpy 场景
-        self.set_active_object(object_name=head_object_name)  # 指定要驱动 shape key 的头网格
-
-        self._texture_image = self._load_texture(texture_path)  # RGB uint8；无则 None
-        self._triangle_uvs: NDArray[np.float64] | None = None  # 首帧从求值 mesh 抽 UV，供烘焙顶点色
-        self._vertex_colors: NDArray[np.float64] | None = None  # 由贴图+UV 烘焙，懒算
+        self.set_active_object(
+            object_name=head_object_name
+        )  # 指定要驱动 shape key 的头网格
 
         # ---- 帧缓存：首帧三角化后复用面索引与顶点缓冲，避免逐帧 bmesh 求值 ----
         self._cached_faces: NDArray[np.int64] | None = None
@@ -203,155 +191,25 @@ class FaceBlenderRuntime:
             for name in BLENDSHAPE_NAMES
         ]
 
-    # ---------- 贴图加载 ----------
-
-    def _load_texture(self, texture_path: str | None) -> NDArray[np.uint8] | None:
-        """
-        加载头模贴图为 RGB 数组：先扫活动对象材质中首张有效 TEX_IMAGE；若无则尝试
-        复用 bpy.data.images 指向该路径并 reload，否则 load 新图像。
-
-        参数:
-            texture_path: 外置贴图文件；材质中无有效图像且为 None 时返回 None。
-        """
-        obj = self.active_obj
-        if obj.data.materials:
-            for mat in obj.data.materials:
-                if mat is None or not mat.use_nodes:
-                    continue
-                for node in mat.node_tree.nodes:
-                    if node.type == "TEX_IMAGE" and node.image is not None:
-                        img = node.image
-                        if img.size[0] == 0 or img.size[1] == 0:
-                            continue
-                        return self._bpy_image_to_numpy(img)
-
-        if texture_path is None:
-            return None
-        path_str = str(Path(texture_path).expanduser())
-        for img in bpy.data.images:
-            if img.name in ("Render Result", "Viewer Node"):
-                continue
-            img.filepath = path_str
-            img.reload()
-            if img.size[0] > 0 and img.size[1] > 0:
-                return self._bpy_image_to_numpy(img)
-
-        disk_img = bpy.data.images.load(path_str)
-        if disk_img.size[0] > 0 and disk_img.size[1] > 0:
-            return self._bpy_image_to_numpy(disk_img)
-        return None
-
-    @staticmethod
-    def _bpy_image_to_numpy(img: Any, max_size: int = 2048) -> NDArray[np.uint8]:
-        """
-        将 Blender 图像像素转为 uint8 RGB；过大时按比例缩小以节省内存。
-
-        参数:
-            img: bpy 图像数据块。
-            max_size: 长边超过此值时用 PIL 缩略图（LANCZOS）。
-        """
-        w, h = img.size
-        channels = img.channels
-        pixels = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, channels)
-        pixels = np.flipud(pixels)
-        if channels >= 4:
-            pixels = pixels[:, :, :3]
-        rgb = np.clip(pixels * 255, 0, 255).astype(np.uint8)
-
-        if max(h, w) > max_size:
-            from PIL import Image as PILImage
-
-            pil_img = PILImage.fromarray(rgb)
-            pil_img.thumbnail((max_size, max_size), PILImage.LANCZOS)
-            rgb = np.array(pil_img)
-
-        return np.ascontiguousarray(rgb)
-
-    # ---------- 贴图烘焙到顶点色 ----------
-
-    @staticmethod
-    def _bake_vertex_colors(
-        texture: NDArray[np.uint8],
-        triangle_uvs: NDArray[np.float64],
-        faces: NDArray[np.int64],
-        n_vertices: int,
-    ) -> NDArray[np.float64]:
-        """
-        按三角形展开 UV 从贴图采样，对每个顶点做邻接面颜色平均。
-
-        参数:
-            texture: H×W×3 的 uint8 或 float 贴图（内部按 /255 归一化）。
-            triangle_uvs: 每条三角边对应一个 UV，形状 (3*F, 2)，与展开后的面索引一致。
-            faces: 三角面顶点索引，形状 (F, 3)。
-            n_vertices: 网格顶点数，用于分配输出 (N, 3) 顶点色。
-        """
-        h, w, _ = texture.shape
-        flat_vert_idx = faces.ravel()
-        us = np.clip(triangle_uvs[:, 0], 0.0, 1.0)
-        vs = np.clip(triangle_uvs[:, 1], 0.0, 1.0)
-        px = (us * (w - 1)).astype(int)
-        py = ((1.0 - vs) * (h - 1)).astype(int)
-
-        sampled = texture[py, px].astype(np.float64) / 255.0
-        colors = np.zeros((n_vertices, 3), dtype=np.float64)
-        counts = np.zeros(n_vertices, dtype=np.float64)
-        np.add.at(colors, flat_vert_idx, sampled)
-        np.add.at(counts, flat_vert_idx, 1.0)
-        colors /= np.maximum(counts, 1.0)[:, None]
-        return colors
-
-    def _ensure_vertex_colors(self, faces: NDArray[np.int64], n_vertices: int) -> None:
-        """
-        若尚未烘焙顶点色且有贴图与三角 UV，则计算并缓存 self._vertex_colors。
-
-        参数:
-            faces: 当前帧三角面索引。
-            n_vertices: 顶点数量。
-        """
-        if self._vertex_colors is not None:
-            return
-        if self._texture_image is not None and self._triangle_uvs is not None:
-            self._vertex_colors = self._bake_vertex_colors(
-                self._texture_image,
-                self._triangle_uvs,
-                faces,
-                n_vertices,
-            )
-
-    # ---------- UV 提取 ----------
-
-    @staticmethod
-    def _extract_triangle_uvs(mesh: Any) -> NDArray[np.float64] | None:
-        """
-        用 foreach_get 批量提取网格活动 UV 层，返回每行 (u, v) 的数组。
-
-        参数:
-            mesh: 已三角化的 bpy 网格数据。
-        """
-        if not mesh.uv_layers:
-            return None
-        uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
-        n = len(uv_layer.data)
-        buf = np.empty(n * 2, dtype=np.float32)
-        uv_layer.data.foreach_get("uv", buf)
-        return buf.reshape(n, 2).astype(np.float64)
-
     # ---------- Blendshape 与网格管线 ----------
 
     @staticmethod
-    def _validate_frame(blendshapes: BlendshapeInput) -> NDArray[np.float64]:
+    def _validate_frame(blendshapes: NDArray[np.float64]) -> NDArray[np.float64]:
         """
-        将输入展平为一维向量并校验长度等于 FRAME_WIDTH。
+        校验一维权重向量长度等于 FRAME_WIDTH。
 
         参数:
-            blendshapes: 一帧 SRanipal 维度的 blendshape 权重（数组或列表）。
+            blendshapes: 一帧 SRanipal 维度的 blendshape 权重；形状 ``(FRAME_WIDTH,)`` 的 float64 向量。
         """
-        frame = np.asarray(blendshapes, dtype=float).reshape(-1)
-        if frame.size != FRAME_WIDTH:
+        if blendshapes.ndim != 1:
             raise ValueError(
-                f"Expected {FRAME_WIDTH} blendshape values, got {frame.size}"
+                f"Expected 1-D blendshape vector, got shape {blendshapes.shape}"
             )
-        return frame
+        if blendshapes.size != FRAME_WIDTH:
+            raise ValueError(
+                f"Expected {FRAME_WIDTH} blendshape values, got {blendshapes.size}"
+            )
+        return blendshapes.astype(np.float64, copy=False)
 
     # ---------- 快速帧求值管线 ----------
 
@@ -410,7 +268,7 @@ class FaceBlenderRuntime:
         self, frame: NDArray[np.float64]
     ) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
         """
-        首帧完整路径：写 shape key → bmesh 三角化 → 缓存面/UV/顶点数 → 返回顶点与面。
+        首帧完整路径：写 shape key → bmesh 三角化 → 缓存面与顶点数 → 返回顶点与面。
 
         参数:
             frame: 已校验的一帧 blendshape 权重向量。
@@ -422,9 +280,6 @@ class FaceBlenderRuntime:
             kb.value = float(val)
 
         mesh = self._get_triangulated_mesh(self.active_obj)
-
-        if self._triangle_uvs is None:
-            self._triangle_uvs = self._extract_triangle_uvs(mesh)
 
         n_verts = len(mesh.vertices)
         vertices = self._read_mesh_vertices_fast(mesh, n_verts)
@@ -466,13 +321,13 @@ class FaceBlenderRuntime:
         assert self._cached_faces is not None
         return vertices, self._cached_faces
 
-    def extract_frame(self, blendshapes: BlendshapeInput) -> FrameData:
+    def extract_frame(self, blendshapes: NDArray[np.float64]) -> FrameData:
         """
-        应用 blendshape 并输出顶点、面及默认 landmarks 字典。
+        应用 blendshape 并输出顶点与三角面。
         首帧走完整三角化路径；后续帧仅更新顶点位置（复用缓存的面索引）。
 
         参数:
-            blendshapes: 一帧 SRanipal 维度权重。
+            blendshapes: 一帧 SRanipal 维度权重，形状 ``(FRAME_WIDTH,)`` 的 float64 向量。
         """
         frame = self._validate_frame(blendshapes)
         if self._cached_faces is None:
@@ -480,61 +335,11 @@ class FaceBlenderRuntime:
         else:
             vertices, faces = self._evaluate_fast(frame)
 
-        landmarks = extract_default_landmarks(vertices)
-        return cast(FrameData, {"vertices": vertices, "faces": faces, **landmarks})
-
-    # ---------- 兼容旧接口（非热路径） ----------
-
-    def set_blendshapes(self, blendshapes: BlendshapeInput) -> Any:
-        """
-        应用一帧 blendshape，从 depsgraph 取出变形网格并返回临时对象副本。
-        注意：此方法保留以兼容外部调用，热路径已改为 extract_frame 内部直连。
-
-        参数:
-            blendshapes: 长度为 FRAME_WIDTH 的 SRanipal 权重向量。
-
-        返回:
-            带有当前变形 mesh 数据的对象副本（modifiers 已清空），供后续读顶点/面。
-        """
-        frame = self._validate_frame(blendshapes)
-        bpy.context.view_layer.objects.active = self.active_obj
-        bpy.context.object.update_from_editmode()
-
-        for kb, val in zip(self._key_blocks, frame):
-            kb.value = float(val)
-
-        obj = bpy.context.object.copy()
-        mesh = self._get_triangulated_mesh(self.active_obj)
-
-        if self._triangle_uvs is None:
-            self._triangle_uvs = self._extract_triangle_uvs(mesh)
-
-        obj.modifiers.clear()
-        obj.data = mesh
-        return obj
-
-    @staticmethod
-    def get_mesh_data(obj: Any) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
-        """
-        从对象当前 mesh 数据读取顶点坐标与多边形顶点索引。
-
-        参数:
-            obj: 其 data 为 Mesh 的场景对象。
-        """
-        mesh = obj.data
-        n_verts = len(mesh.vertices)
-        co = np.empty(n_verts * 3, dtype=np.float32)
-        mesh.vertices.foreach_get("co", co)
-        vertices = co.reshape(n_verts, 3).astype(np.float64)
-        n_loops = len(mesh.loops)
-        vi = np.empty(n_loops, dtype=np.int32)
-        mesh.loops.foreach_get("vertex_index", vi)
-        faces = vi.reshape(-1, 3).astype(np.int64)
-        return vertices, faces
+        return {"vertices": vertices, "faces": faces}
 
     def render(self, vertices: NDArray[np.float64], faces: NDArray[np.int64]) -> None:
         """
-        将网格推送到 Open3D 查看器；可选口腔裁切与顶点色。
+        将网格推送到 Open3D 查看器；可选线框头模式（顶点色由查看器默认肤色填充）。
 
         参数:
             vertices: 世界空间或模型空间顶点 N×3。
@@ -542,7 +347,6 @@ class FaceBlenderRuntime:
         """
         if self.viewer is None:
             raise RuntimeError("Viewer is disabled for this runtime instance")
-        self._ensure_vertex_colors(faces, len(vertices))
 
         if self._wireframe_head:
             if self._wf_shell_edges is None:
@@ -552,44 +356,25 @@ class FaceBlenderRuntime:
                 self._wf_shell_edges = unique_edges_from_faces(shell_faces)
             shell_vertices = vertices[self._wf_shell_global_idx]
             tongue_vertices = vertices[self._wf_tongue_global_idx]
-            tongue_colors = (
-                self._vertex_colors[self._wf_tongue_global_idx]
-                if self._vertex_colors is not None
-                else None
-            )
             self.viewer.update(
                 vertices,
                 faces,
                 shell_vertices=shell_vertices,
                 tongue_vertices=tongue_vertices,
-                tongue_vertex_colors=tongue_colors,
                 shell_edges=self._wf_shell_edges,
                 tongue_faces=self._wf_tongue_faces,
             )
             return
 
-        if self._cutaway:
-            if self._cutaway_mask is None:
-                self._cutaway_mask = build_mouth_removal_mask(faces, vertices)
-            faces = faces[self._cutaway_mask]
+        self.viewer.update(vertices, faces)
 
-        self.viewer.update(vertices, faces, vertex_colors=self._vertex_colors)
-
-    def update_visualizer(self, blendshapes: BlendshapeInput) -> FrameData:
+    def update_visualizer(self, blendshapes: NDArray[np.float64]) -> FrameData:
         """
         提取一帧数据并刷新 Open3D，返回与 extract_frame 相同的结构。
 
         参数:
-            blendshapes: 一帧 blendshape 权重。
+            blendshapes: 一帧 blendshape 权重，形状 ``(FRAME_WIDTH,)`` 的 float64 向量。
         """
         frame = self.extract_frame(blendshapes)
         self.render(vertices=frame["vertices"], faces=frame["faces"])
         return frame
-
-    set_key_shapes = set_blendshapes
-    get_keypoints = get_mesh_data
-    get_lip = staticmethod(get_lip_vertices)
-    get_tongue = staticmethod(get_tongue_vertices)
-    get_cheek = staticmethod(get_cheek_vertices)
-    get_key_tongue = staticmethod(get_tongue_tip)
-    get_key_cheek = staticmethod(get_cheek_keypoints)
