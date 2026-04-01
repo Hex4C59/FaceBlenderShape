@@ -23,12 +23,7 @@ class Open3DMeshViewer:
         *,
         wireframe_head: bool = False,
     ) -> None:
-        """
-        创建可视化窗口与内部 Visualizer。
-
-        :param window_name: 窗口标题字符串。
-        :param wireframe_head: True 时头壳为紧凑顶点线框、舌为紧凑实体网格。
-        """
+        """创建可视化窗口与内部 Visualizer。"""
         self._visualizer = o3d.visualization.Visualizer()
         self._visualizer.create_window(window_name=window_name)
         self._wireframe_head = wireframe_head
