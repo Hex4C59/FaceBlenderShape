@@ -91,6 +91,7 @@ class FaceBlenderRuntime:
         *,
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
         wireframe_head: bool = False,
+        open3d_dual_view: bool = False,
         tongue_vertex_lo: int | None = None,
         tongue_vertex_hi: int | None = None,
         tongue_adjacency_expand: int = 0,
@@ -98,7 +99,9 @@ class FaceBlenderRuntime:
         lo = TONGUE_SLICE.start if tongue_vertex_lo is None else tongue_vertex_lo
         hi = TONGUE_SLICE.stop if tongue_vertex_hi is None else tongue_vertex_hi
         if lo >= hi:
-            raise ValueError(f"tongue vertex range invalid: lo={lo} hi={hi} (need lo < hi)")
+            raise ValueError(
+                f"tongue vertex range invalid: lo={lo} hi={hi} (need lo < hi)"
+            )
         self._tongue_lo = lo
         self._tongue_hi = hi
         self._tongue_adjacency_expand = max(0, tongue_adjacency_expand)
@@ -133,6 +136,7 @@ class FaceBlenderRuntime:
         self.viewer = Open3DMeshViewer(
             window_name=window_name,
             wireframe_head=wireframe_head,
+            dual_view=open3d_dual_view,
         )
 
     def load_fbx(self, path: str | None) -> None:
