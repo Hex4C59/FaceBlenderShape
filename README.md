@@ -2,7 +2,14 @@
 
 ## 简介
 
-如果你使用 Vive Facial Tracker 作为真值系统，并希望获取毫米尺度的人脸关键点数据，或者你想在不依赖 Unity 的情况下可视化 SRanipal Blender Shape 的面部效果，那么这个仓库可能会对你有帮助。
+这是一个基于 Python 的面部 BlendShape 预览工具：
+
+- 使用 `bpy` 导入并驱动仓库内置的 `sranipal_head.fbx`
+- 读取每帧 52 列的 BlendShape CSV
+- 通过 Blender 求值得到变形后的网格
+- 使用 Open3D 实时预览头模形变
+
+当前仓库的**稳定公开能力**聚焦在“预览 CSV 驱动的面部动画”。README 只描述当前已经落地并能从仓库中直接找到的功能。
 
 ## 安装
 
@@ -37,75 +44,97 @@ pip install -r requirements.txt
 ```
 
 不过需要注意：
+
 - `requirements.txt` 只是一个兼容入口；
 - 真正维护的依赖定义仍在 `pyproject.toml`；
 - 更新依赖时应修改 `pyproject.toml`，然后重新生成/同步锁文件，而不是手改 `requirements.txt`。
 
-## 目录概览
+## 当前目录概览
 
 ```text
 FaceBlenderShape/
 ├── blender_interface.py
-├── sranipal2keypoints.py
 ├── face_blender_shape/
-├── scripts/
 ├── assets/models/
-├── data/examples/
-├── outputs/
-└── docs/assets/
+├── docs/assets/
+├── pyproject.toml
+├── requirements.txt
+└── uv.lock
 ```
 
-- `blender_interface.py`：保留的顶层兼容入口，用于 Blender 预览
-- `sranipal2keypoints.py`：保留的顶层兼容入口，用于关键点导出
-- `face_blender_shape/`：核心运行时、路径、IO、viewer、landmark 模块
-- `scripts/`：辅助脚本，例如 demo 数据生成
+- `blender_interface.py`：顶层兼容入口，用于播放 BlendShape CSV
+- `face_blender_shape/`：核心运行时、CLI、Open3D viewer、常量与网格拆分逻辑
 - `assets/models/`：运行依赖的 FBX 模型
-- `data/examples/`：手工维护的示例输入
-- `outputs/`：脚本运行时生成的输出文件
 - `docs/assets/`：README 使用的文档资源
 
-## 人脸网格可视化器
+## 输入格式
 
-直接运行兼容脚本：
+输入 CSV 的每一行表示一帧，每帧必须包含 **52 列**，列顺序需要与代码中的 `face_blender_shape/constants.py` 里的 `BLENDSHAPE_NAMES` 完全一致。
 
-```bash
-uv run python blender_interface.py
-```
+如果首行不是数值，程序会把它当作表头并自动跳过。
 
-播放示例 CSV：
+## 预览头模动画
 
-```bash
-uv run python blender_interface.py --path data/examples/sample_data.csv
-```
-
-也可以使用统一 CLI：
+### 方式一：使用兼容入口脚本
 
 ```bash
-uv run face-blender-shape preview --path data/examples/sample_data.csv
+uv run python blender_interface.py --path /path/to/your_blendshape.csv
 ```
 
-<img src="docs/assets/facevis.gif" alt="drawing" width="200" height="320"/>
-
-## Blender Shape 转关键点
-
-使用兼容脚本：
+### 方式二：使用统一 CLI
 
 ```bash
-uv run python sranipal2keypoints.py --path data/examples/sample_data.csv
+uv run face-blender-shape preview --path /path/to/your_blendshape.csv
 ```
 
-或使用统一 CLI：
+### 常用参数
 
 ```bash
-uv run face-blender-shape convert --path data/examples/sample_data.csv
+uv run face-blender-shape preview \
+  --path /path/to/your_blendshape.csv \
+  --fps 30 \
+  --fbx /path/to/your_head.fbx \
+  --wireframe-head \
+  --tongue-lo 180 \
+  --tongue-hi 314 \
+  --tongue-adjacency-expand 1
 ```
 
-默认会在 `outputs/` 下生成对应的 `.npz` 文件，例如 `outputs/sample_data.npz`。
+参数说明：
 
-## 生成 tongue demo
+- `--path`：必填，BlendShape CSV 路径
+- `--fps`：播放帧率
+- `--fbx`：覆盖默认 FBX 路径
+- `--wireframe-head`：头壳使用线框、舌体保持实体网格，便于观察舌部形变
+- `--tongue-lo` / `--tongue-hi`：在线框模式下指定舌区域顶点下标范围
+- `--tongue-adjacency-expand`：沿共享边扩展舌面邻接轮数，用于补齐舌体边界三角面
 
-```bash
-uv run python scripts/generate_tongue_demo.py
+<img src="docs/assets/facevis.gif" alt="Face preview" width="200" height="320"/>
+
+## 当前默认模型约定
+
+默认使用的模型位于：
+
+```text
+assets/models/sranipal_head.fbx
 ```
 
-生成结果会写入 `outputs/tongue_demo.csv`。
+当前运行时对默认模型有以下约定：
+
+- 头部对象名为 `Head`
+- BlendShape 通道与 `BLENDSHAPE_NAMES` 一一对应
+- 舌区域的默认顶点下标范围与仓库内置模型一致
+
+这意味着它目前更适合驱动与默认 FBX 拓扑兼容的头模，而不是任意未知拓扑的人脸模型。
+
+## 当前未在 README 中承诺的能力
+
+当前 README **不再声明**以下能力，因为它们未作为当前仓库主线能力稳定暴露：
+
+- 关键点导出命令
+- `face-blender-shape convert` 子命令
+- `sranipal2keypoints.py` 顶层脚本
+- 仓库内置示例 CSV
+- tongue demo 生成脚本
+
+如果后续这些能力重新加入主线接口，再补回 README。
