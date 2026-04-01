@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -16,6 +18,51 @@ def build_tongue_face_mask(
 ) -> NDArray[np.bool_]:
     """判断每个三角面是否含舌顶点；含则该面归入舌实体子网格，与头壳线框分离绘制。"""
     return np.any((faces >= tongue_lo) & (faces < tongue_hi), axis=1)
+
+
+def expand_tongue_face_mask_by_adjacency(
+    faces: NDArray[np.int64],
+    mask: NDArray[np.bool_],
+    iterations: int,
+) -> NDArray[np.bool_]:
+    """沿共享边把与「已标舌面」相邻的三角面并入舌掩码，用于顶点下标未覆盖到的衔接三角面。"""
+    if iterations <= 0:
+        return mask
+    n_faces = faces.shape[0]
+    edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for fi in range(n_faces):
+        a, b, c = int(faces[fi, 0]), int(faces[fi, 1]), int(faces[fi, 2])
+        for u, v in ((a, b), (b, c), (c, a)):
+            if u > v:
+                u, v = v, u
+            edge_faces[(u, v)].append(fi)
+    m = mask.copy()
+    for _ in range(iterations):
+        add: list[int] = []
+        for fi in range(n_faces):
+            if m[fi]:
+                continue
+            tri = faces[fi]
+            touches_tongue = False
+            for u, v in (
+                (int(tri[0]), int(tri[1])),
+                (int(tri[1]), int(tri[2])),
+                (int(tri[2]), int(tri[0])),
+            ):
+                if u > v:
+                    u, v = v, u
+                for ofi in edge_faces.get((u, v), ()):
+                    if ofi != fi and m[ofi]:
+                        touches_tongue = True
+                        break
+                if touches_tongue:
+                    break
+            if touches_tongue:
+                add.append(fi)
+        if not add:
+            break
+        m[np.array(add, dtype=np.int64)] = True
+    return m
 
 
 def unique_edges_from_faces(faces: NDArray[np.int64]) -> NDArray[np.int64]:
@@ -57,12 +104,15 @@ def split_head_tongue_meshes(
     faces: NDArray[np.int64],
     tongue_lo: int = TONGUE_SLICE.start,
     tongue_hi: int = TONGUE_SLICE.stop,
+    *,
+    tongue_adjacency_expand: int = 0,
 ) -> tuple[
     tuple[NDArray[np.float64], NDArray[np.int64], NDArray[np.int64]],
     tuple[NDArray[np.float64], NDArray[np.int64], NDArray[np.int64]],
 ]:
     """将变形后的整头网格拆成「外壳」与「舌」两个独立紧凑网格（各自顶点表与面表）。"""
     mask = build_tongue_face_mask(faces, tongue_lo, tongue_hi)
+    mask = expand_tongue_face_mask_by_adjacency(faces, mask, tongue_adjacency_expand)
     shell = compact_mesh_by_face_mask(vertices, faces, ~mask)
     tongue = compact_mesh_by_face_mask(vertices, faces, mask)
     return shell, tongue

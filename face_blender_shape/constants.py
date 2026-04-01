@@ -1,14 +1,19 @@
 """全项目共用的 BlendShape 名称顺序与默认配置。
 
-``BLENDSHAPE_NAMES`` 顺序须与 SRanipal 风格 CSV 列一致；勿在元组中间增删改名称，
-否则旧 CSV 与已导出的帧数据会与通道错位。
+``BLENDSHAPE_NAMES`` 顺序与 ``sranipal_head.fbx`` 导入 Blender 后、除 Basis 外的
+形态键顺序一致（口周 → 眼 → 舌）。CSV 每行须与此顺序一一对应，共 52 列。
+
+Basis 为基准形，不由 CSV 驱动。网格上共 53 个形态键槽位 = Basis + 52 列。
+
+勿在元组中间增删改名称，否则旧 CSV 与已导出帧数据会与通道错位。
 """
 
 from __future__ import annotations
 
-# ---------- SRanipal 通道（与 CSV 列顺序一一对应）----------
+# ---------- 与 sranipal_head.fbx / Head 网格一致的 52 个可驱动形态键 ----------
 
 BLENDSHAPE_NAMES: tuple[str, ...] = (
+    # --- 口颌与面颊（与旧版 SRanipal 37 通道中前 26 个顺序相同）---
     "Jaw_Left",  # 下颌向左
     "Jaw_Right",  # 下颌向右
     "Jaw_Forward",  # 下颌前伸
@@ -35,6 +40,23 @@ BLENDSHAPE_NAMES: tuple[str, ...] = (
     "Mouth_Upper_Inside",  # 上唇向内卷
     "Mouth_Lower_Inside",  # 下唇向内卷
     "Mouth_Lower_Overlay",  # 下唇叠在上唇之上
+    # --- 眼部（15）；旧版 37 列 CSV 无此段，迁移时中间补 0 ---
+    "Eye_Left_Blink",  # 左眼眨眼
+    "Eye_Left_Wide",  # 左眼睁大
+    "Eye_Left_Right",  # 左眼朝右看
+    "Eye_Left_Left",  # 左眼朝左看
+    "Eye_Left_Up",  # 左眼朝上看
+    "Eye_Left_Down",  # 左眼朝下看
+    "Eye_Right_Blink",  # 右眼眨眼
+    "Eye_Right_Wide",  # 右眼睁大
+    "Eye_Right_Right",  # 右眼朝右看
+    "Eye_Right_Left",  # 右眼朝左看
+    "Eye_Right_Up",  # 右眼朝上看
+    "Eye_Right_Down",  # 右眼朝下看
+    "Eye_Frown",  # 眉间皱眉
+    "Eye_Left_squeeze",  # 左眼眯眼
+    "Eye_Right_squeeze",  # 右眼眯眼
+    # --- 舌（11）；与旧版 37 列中最后 11 个顺序相同 ---
     "Tongue_LongStep1",  # 舌头伸出（第一段）
     "Tongue_LongStep2",  # 舌头伸出（第二段，更长）
     "Tongue_Left",  # 舌头向左
@@ -50,6 +72,11 @@ BLENDSHAPE_NAMES: tuple[str, ...] = (
 
 BLENDSHAPE_INDEX: dict[str, int] = {name: idx for idx, name in enumerate(BLENDSHAPE_NAMES)}
 FRAME_WIDTH: int = len(BLENDSHAPE_NAMES)
+
+# 网格上含 Basis 时的形态键总数（仅说明用；CSV 不含 Basis）
+SHAPE_KEY_COUNT_WITH_BASIS: int = FRAME_WIDTH + 1
+# Blender 中第 53 个形态键（基准形，不由 CSV 写入）
+BASIS_SHAPE_KEY_NAME: str = "Basis"
 
 # ---------- 预览与可视化默认 ----------
 
