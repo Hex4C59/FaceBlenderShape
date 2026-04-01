@@ -12,6 +12,9 @@ try:
 except ModuleNotFoundError:
     _bmesh = None
 
+from face_blender_shape.blender_fbx_import_patch import (
+    apply_blender_fbx_light_cast_shadow_patch,
+)
 from face_blender_shape.constants import (
     BLENDSHAPE_NAMES,
     DEFAULT_OPEN3D_WINDOW_NAME,
@@ -20,6 +23,7 @@ from face_blender_shape.constants import (
 
 # 头舌网格拆分与线框边（与默认 FBX 舌顶点下标一致）。
 from face_blender_shape.landmarks import (
+    TONGUE_SLICE,
     split_head_tongue_meshes,
     unique_edges_from_faces,
 )
@@ -79,7 +83,7 @@ class FrameData(TypedDict):
 
 
 class FaceBlenderRuntime:
-    """由 SRanipal 风格 37 维 BlendShape 驱动的面部网格运行时。"""
+    """由与 ``sranipal_head.fbx`` 一致的 52 维形态键（CSV）驱动的面部网格运行时。"""
 
     def __init__(
         self,
@@ -87,7 +91,17 @@ class FaceBlenderRuntime:
         *,
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
         wireframe_head: bool = False,
+        tongue_vertex_lo: int | None = None,
+        tongue_vertex_hi: int | None = None,
+        tongue_adjacency_expand: int = 0,
     ) -> None:
+        lo = TONGUE_SLICE.start if tongue_vertex_lo is None else tongue_vertex_lo
+        hi = TONGUE_SLICE.stop if tongue_vertex_hi is None else tongue_vertex_hi
+        if lo >= hi:
+            raise ValueError(f"tongue vertex range invalid: lo={lo} hi={hi} (need lo < hi)")
+        self._tongue_lo = lo
+        self._tongue_hi = hi
+        self._tongue_adjacency_expand = max(0, tongue_adjacency_expand)
 
         self._wireframe_head = (
             wireframe_head  # True 时 Open3D 用紧凑外壳 LineSet + 紧凑舌网格
@@ -129,6 +143,7 @@ class FaceBlenderRuntime:
             self.fbx_path = Path(path).expanduser()
         # 取消全部选中，避免残留选中影响导入后对象的 active 与视图层状态。
         bpy.ops.object.select_all(action="DESELECT")
+        apply_blender_fbx_light_cast_shadow_patch()
         # 将指定路径的 FBX 并入当前场景（网格、形态键等）；运算符要求 filepath 为 str。
         bpy.ops.import_scene.fbx(filepath=str(self.fbx_path))
 
@@ -246,7 +261,13 @@ class FaceBlenderRuntime:
         """将网格推送到 Open3D 查看器；可选线框头模式（顶点色由查看器默认肤色填充）。"""
         if self._wireframe_head:
             if self._wf_shell_edges is None:
-                shell, tongue = split_head_tongue_meshes(vertices, faces)
+                shell, tongue = split_head_tongue_meshes(
+                    vertices,
+                    faces,
+                    tongue_lo=self._tongue_lo,
+                    tongue_hi=self._tongue_hi,
+                    tongue_adjacency_expand=self._tongue_adjacency_expand,
+                )
                 _, shell_faces, self._wf_shell_global_idx = shell
                 _, self._wf_tongue_faces, self._wf_tongue_global_idx = tongue
                 self._wf_shell_edges = unique_edges_from_faces(shell_faces)

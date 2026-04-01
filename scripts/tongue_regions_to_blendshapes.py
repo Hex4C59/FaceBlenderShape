@@ -1,5 +1,5 @@
 """将 tongue_regions.csv（舌头三点 2D 坐标轨迹）启发式映射为
-37 列 blendshape CSV（首行为 BLENDSHAPE_NAMES 列名），可直接喂给本项目的 preview / convert 管线。
+52 列 blendshape CSV（首行为 BLENDSHAPE_NAMES 列名），可直接喂给本项目的 preview 管线。
 
 映射思路
 --------
@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
+from numpy.typing import NDArray
 
 from face_blender_shape.constants import BLENDSHAPE_INDEX, BLENDSHAPE_NAMES, FRAME_WIDTH
 
@@ -35,7 +36,8 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 # I/O
 # ---------------------------------------------------------------------------
 
-def load_tongue_regions(csv_path: str | Path) -> dict[str, np.ndarray]:
+
+def load_tongue_regions(csv_path: str | Path) -> dict[str, NDArray[np.float64]]:
     """读取 tongue_regions.csv，按 video 分组返回坐标数组。
 
     csv_path: 输入 CSV 文件路径。
@@ -47,19 +49,23 @@ def load_tongue_regions(csv_path: str | Path) -> dict[str, np.ndarray]:
         for row in reader:
             vid = row["video"]
             coords = [
-                float(row["root_x"]), float(row["root_y"]),
-                float(row["body_x"]), float(row["body_y"]),
-                float(row["tip_x"]), float(row["tip_y"]),
+                float(row["root_x"]),
+                float(row["root_y"]),
+                float(row["body_x"]),
+                float(row["body_y"]),
+                float(row["tip_x"]),
+                float(row["tip_y"]),
             ]
             groups.setdefault(vid, []).append(coords)
-    return {vid: np.array(rows) for vid, rows in groups.items()}
+    return {vid: np.asarray(rows, dtype=np.float64) for vid, rows in groups.items()}
 
 
 # ---------------------------------------------------------------------------
 # 几何特征
 # ---------------------------------------------------------------------------
 
-def compute_features(coords: np.ndarray) -> dict[str, np.ndarray]:
+
+def compute_features(coords: NDArray[np.float64]) -> dict[str, NDArray[np.float64]]:
     """从三点坐标提取帧级几何特征（均为 shape (N,)）。
 
     coords: shape (N, 6)，列序 root_x, root_y, body_x, body_y, tip_x, tip_y。
@@ -73,7 +79,6 @@ def compute_features(coords: np.ndarray) -> dict[str, np.ndarray]:
     ext_vec = tip - root
     # 沿着（N，2），第1维求欧式距离
     ext_len = np.linalg.norm(ext_vec, axis=1)
-
 
     # root→tip 向量的仰角（弧度），y 轴向下时负角 = tip 在 root 上方
     angle = np.arctan2(-(ext_vec[:, 1]), ext_vec[:, 0])
@@ -98,7 +103,10 @@ def compute_features(coords: np.ndarray) -> dict[str, np.ndarray]:
 # 归一化 & 平滑
 # ---------------------------------------------------------------------------
 
-def norm_deviation(arr: np.ndarray, scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+
+def norm_deviation(
+    arr: NDArray[np.float64], scale: float = 1.0
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """以中位数为中性，将正/负偏差分别归一化到 [0, 1] 并乘以 scale。
 
     arr: 输入一维数组。
@@ -110,14 +118,16 @@ def norm_deviation(arr: np.ndarray, scale: float = 1.0) -> tuple[np.ndarray, np.
     pos = np.clip(dev, 0, None)
     neg = np.clip(-dev, 0, None)
 
-    def _norm(a: np.ndarray) -> np.ndarray:
+    def _norm(a: NDArray[np.float64]) -> NDArray[np.float64]:
         hi = np.percentile(a, 97) if a.max() > 0 else 1.0
         return np.clip(a / (hi + 1e-8), 0.0, 1.0) * scale
 
     return _norm(pos), _norm(neg)
 
 
-def norm_range(arr: np.ndarray, lo_pct: float = 3, hi_pct: float = 97) -> np.ndarray:
+def norm_range(
+    arr: NDArray[np.float64], lo_pct: float = 3, hi_pct: float = 97
+) -> NDArray[np.float64]:
     """按百分位归一化到 [0, 1]。
 
     arr: 输入一维数组。
@@ -130,7 +140,7 @@ def norm_range(arr: np.ndarray, lo_pct: float = 3, hi_pct: float = 97) -> np.nda
     return np.clip((arr - lo) / (hi - lo), 0.0, 1.0)
 
 
-def smooth(arr: np.ndarray, sigma: float) -> np.ndarray:
+def smooth(arr: NDArray[np.float64], sigma: float) -> NDArray[np.float64]:
     """一维高斯平滑（零填充边界），sigma <= 0 时不做处理。
 
     arr: 输入一维数组。
@@ -138,30 +148,35 @@ def smooth(arr: np.ndarray, sigma: float) -> np.ndarray:
     """
     if sigma <= 0 or len(arr) < 3:
         return arr
-    from scipy.ndimage import gaussian_filter1d
-    return gaussian_filter1d(arr, sigma=sigma, mode="nearest")
+    from scipy.ndimage import gaussian_filter1d  # type: ignore[import-untyped]
+
+    return np.asarray(
+        gaussian_filter1d(arr, sigma=sigma, mode="nearest"),
+        dtype=np.float64,
+    )
 
 
 # ---------------------------------------------------------------------------
 # 核心映射
 # ---------------------------------------------------------------------------
 
+
 def features_to_blendshapes(
-    feats: dict[str, np.ndarray],
+    feats: dict[str, NDArray[np.float64]],
     n: int,
     *,
     sigma: float = 1.5,
     flip_y: bool = False,
-) -> np.ndarray:
-    """将几何特征映射为 37 列 blendshape 权重。
+) -> NDArray[np.float64]:
+    """将几何特征映射为 52 列 blendshape 权重。
 
     feats: compute_features 返回的特征字典。
     n: 帧数。
     sigma: 时域高斯平滑核宽度（帧），<= 0 不平滑。
     flip_y: 若为 True 则反转 y 轴方向（默认假设 y 向下 = 图像坐标）。
-    返回: shape (n, 37) blendshape 数组。
+    返回: shape (n, FRAME_WIDTH) blendshape 数组。
     """
-    frames = np.zeros((n, FRAME_WIDTH), dtype=float)
+    frames = np.zeros((n, FRAME_WIDTH), dtype=np.float64)
 
     ext = norm_range(feats["ext_len"])
     angle = feats["angle"] * (-1 if flip_y else 1)
@@ -186,8 +201,12 @@ def features_to_blendshapes(
     # --- 对角 morph：用 angle 偏差 × 曲率 给一点微动，增加丰富度 ---
     curv_n = norm_range(curvature)
     angle_pos, angle_neg = norm_deviation(angle, scale=1.0)
-    frames[:, BLENDSHAPE_INDEX["Tongue_UpLeft_Morph"]] = smooth(angle_pos * curv_n * 0.25, sigma)
-    frames[:, BLENDSHAPE_INDEX["Tongue_DownRight_Morph"]] = smooth(angle_neg * curv_n * 0.25, sigma)
+    frames[:, BLENDSHAPE_INDEX["Tongue_UpLeft_Morph"]] = smooth(
+        angle_pos * curv_n * 0.25, sigma
+    )
+    frames[:, BLENDSHAPE_INDEX["Tongue_DownRight_Morph"]] = smooth(
+        angle_neg * curv_n * 0.25, sigma
+    )
 
     # --- 张嘴口型：root 越下沉，嘴巴越张 ---
     jaw = norm_range(root_y)
@@ -211,12 +230,13 @@ def features_to_blendshapes(
     frames[:, ls1_idx] = np.minimum(frames[:, ls1_idx], jaw_val * 1.2)
     frames[:, ls2_idx] = np.minimum(frames[:, ls2_idx], jaw_val * 0.85)
 
-    return np.clip(frames, 0.0, 1.0)
+    return np.clip(frames, 0.0, 1.0).astype(np.float64, copy=False)
 
 
 # ---------------------------------------------------------------------------
 # 入口
 # ---------------------------------------------------------------------------
+
 
 def convert_tongue_regions(
     input_csv: str | Path,
@@ -258,21 +278,26 @@ def main() -> None:
         description="将 tongue_regions.csv 的舌头三点坐标映射为 blendshape CSV",
     )
     parser.add_argument(
-        "-i", "--input",
+        "-i",
+        "--input",
         default=str(PROJECT_ROOT / "tongue_regions.csv"),
         help="输入 tongue_regions.csv 路径（默认仓库根目录下的 tongue_regions.csv）",
     )
     parser.add_argument(
-        "-o", "--output-dir",
+        "-o",
+        "--output-dir",
         default=None,
         help="输出目录（默认 outputs/）",
     )
     parser.add_argument(
-        "--sigma", type=float, default=1.5,
+        "--sigma",
+        type=float,
+        default=1.5,
         help="时域高斯平滑标准差（帧），0 = 不平滑（默认 1.5）",
     )
     parser.add_argument(
-        "--flip-y", action="store_true",
+        "--flip-y",
+        action="store_true",
         help="翻转 y 轴方向（若坐标系 y 向上则需要此选项）",
     )
     args = parser.parse_args()
