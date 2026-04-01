@@ -41,7 +41,7 @@ def preview_sequence(
     fps: float = DEFAULT_PLAYBACK_FPS,
     *,
     fbx_path: str | None = None,
-    wireframe_head: bool = False, # 是否头壳线框 + 舌实体。
+    wireframe_head: bool = False,  # 是否头壳线框 + 舌实体。
 ) -> None:
 
     data: NDArray[np.float64] = load_blendshape_csv(path)
@@ -50,7 +50,9 @@ def preview_sequence(
         path=fbx_path,
         wireframe_head=wireframe_head,  # True 时头壳 LineSet、舌三角面实体
     )
-    frame_delay = 1.0 / fps if fps > 0 else 0.0  # 相邻两帧之间的间隔（秒）；fps≤0 时不等待
+    frame_delay = (
+        1.0 / fps if fps > 0 else 0.0
+    )  # 相邻两帧之间的间隔（秒）；fps≤0 时不等待
     frame_total = data.shape[0]  # CSV 行数，即总帧数
 
     # 逐帧回放 CSV：每行是一帧的 blendshape 权重向量。
@@ -114,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args: Namespace = parser.parse_args(argv)
     handler = cast(CommandHandler | None, getattr(args, "handler", None))
-    
+
     if handler is None:
         parser.print_help()
         return 0
