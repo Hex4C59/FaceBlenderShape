@@ -243,7 +243,9 @@ class FaceBlenderRuntime:
         proj = (coords - centroid) @ long_axis
         t = (proj - proj.min()) / (proj.max() - proj.min() + 1e-12)
 
-        weight = np.sin(np.pi * t)
+        alpha, beta = 2.5, 3.5  # 峰值 ≈ (α-1)/(α+β-2) ≈ 0.375，偏向舌体前部
+        weight = t ** (alpha - 1) * (1 - t) ** (beta - 1)
+        weight /= weight.max() + 1e-12
 
         up = np.cross(vt[0], vt[1])
         up /= np.linalg.norm(up) + 1e-12
