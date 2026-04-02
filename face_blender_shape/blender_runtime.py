@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import bpy
 import numpy as np
@@ -28,8 +29,55 @@ from face_blender_shape.landmarks import (
     unique_edges_from_faces,
 )
 
-# 变形网格的实时三角网格窗口（与 Blender 求值结果对接）。
-from face_blender_shape.open3d_viewer import Open3DMeshViewer
+try:
+    from face_blender_shape.open3d_viewer import Open3DMeshViewer
+except ModuleNotFoundError:
+    Open3DMeshViewer = None  # type: ignore[misc, assignment]
+
+
+def _tag_redraw_view3d() -> None:
+    ctx = cast(Any, bpy.context)
+    wm = ctx.window_manager
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+    window = ctx.window
+    if window is not None:
+        try:
+            with ctx.temp_override(window=window):
+                cast(Any, bpy.ops).wm.redraw_timer(
+                    type="DRAW_WIN_SWAP", iterations=1
+                )
+        except (RuntimeError, AttributeError):
+            pass
+
+
+class _BlenderViewportRedrawViewer:
+    """无 Open3D 时：形态键已在 extract_frame 中写入，此处只刷新 3D 视口。"""
+
+    def __init__(self, head_obj: Any, *, wireframe_head: bool) -> None:
+        self._head_obj = head_obj
+        self._wireframe_head = wireframe_head
+        self._styled = False
+
+    def update(
+        self,
+        vertices: NDArray[np.float64],
+        faces: NDArray[np.int64],
+        *,
+        shell_edges: NDArray[np.int64] | None = None,
+        tongue_faces: NDArray[np.int64] | None = None,
+        shell_vertices: NDArray[np.float64] | None = None,
+        tongue_vertices: NDArray[np.float64] | None = None,
+    ) -> None:
+        del vertices, faces, shell_edges, tongue_faces, shell_vertices, tongue_vertices
+        if self._wireframe_head and not self._styled:
+            self._head_obj.display_type = "WIRE"
+            self._styled = True
+        cast(Any, bpy.context).view_layer.update()
+        _tag_redraw_view3d()
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _MODELS_DIR = _PROJECT_ROOT / "assets" / "models"
@@ -92,6 +140,7 @@ class FaceBlenderRuntime:
         window_name: str = DEFAULT_OPEN3D_WINDOW_NAME,
         wireframe_head: bool = False,
         open3d_dual_view: bool = False,
+        open3d_camera_zoom: float = 0.6,
         tongue_vertex_lo: int | None = None,
         tongue_vertex_hi: int | None = None,
         tongue_adjacency_expand: int = 0,
@@ -133,11 +182,22 @@ class FaceBlenderRuntime:
         self._n_verts: int = 0
         self._co_buf: NDArray[np.float32] | None = None
 
-        self.viewer = Open3DMeshViewer(
-            window_name=window_name,
-            wireframe_head=wireframe_head,
-            dual_view=open3d_dual_view,
-        )
+        if Open3DMeshViewer is not None:
+            self.viewer = Open3DMeshViewer(
+                window_name=window_name,
+                wireframe_head=wireframe_head,
+                dual_view=open3d_dual_view,
+                camera_zoom=open3d_camera_zoom,
+            )
+        else:
+            sys.stderr.write(
+                "face_blender_shape: Open3D 未安装（例如 Blender 内置 Python 尚无对应 wheel），"
+                "已改用 Blender 3D 视口预览；--open3d-dual-view / --open3d-camera-zoom 在此模式下无效。\n"
+            )
+            self.viewer = _BlenderViewportRedrawViewer(
+                self.active_obj,
+                wireframe_head=wireframe_head,
+            )
 
     def load_fbx(self, path: str | None) -> None:
         """将 FBX 导入当前 Blender 场景。"""
@@ -263,6 +323,9 @@ class FaceBlenderRuntime:
 
     def render(self, vertices: NDArray[np.float64], faces: NDArray[np.int64]) -> None:
         """将网格推送到 Open3D 查看器；可选线框头模式（顶点色由查看器默认肤色填充）。"""
+        if isinstance(self.viewer, _BlenderViewportRedrawViewer):
+            self.viewer.update(vertices, faces)
+            return
         if self._wireframe_head:
             if self._wf_shell_edges is None:
                 shell, tongue = split_head_tongue_meshes(

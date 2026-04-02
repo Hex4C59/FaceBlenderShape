@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 _patch_done = False
 
 
@@ -12,15 +14,15 @@ def apply_blender_fbx_light_cast_shadow_patch() -> bool:
     if _patch_done:
         return True
     try:
-        import io_scene_fbx.import_fbx as import_fbx
+        import io_scene_fbx.import_fbx as import_fbx  # pyright: ignore[reportMissingModuleSource]
     except ImportError:
         return False
 
     import math
 
-    import bpy
+    import bpy  # pyright: ignore[reportMissingModuleSource]
 
-    def blen_read_light_fixed(fbx_tmpl, fbx_obj, settings):
+    def blen_read_light_fixed(fbx_tmpl: Any, fbx_obj: Any, settings: Any) -> Any:
         elem_name_utf8 = import_fbx.elem_name_ensure_class(fbx_obj, b"NodeAttribute")
         fbx_props = (
             import_fbx.elem_find_first(fbx_obj, b"Properties70"),

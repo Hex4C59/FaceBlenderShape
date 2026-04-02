@@ -14,10 +14,14 @@ class _DataImages:
     def __iter__(self) -> Iterator[Any]: ...
     def load(self, path: str) -> Any: ...
 
+class _DataLights:
+    def new(self, name: str, type: str) -> Any: ...
+
 class _Data:
     objects: _DataObjects
     meshes: _DataMeshes
     images: _DataImages
+    lights: _DataLights
 
 data: _Data
 
