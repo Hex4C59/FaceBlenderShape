@@ -1,16 +1,17 @@
 """全项目共用的 BlendShape 名称顺序与默认配置。
 
 ``BLENDSHAPE_NAMES`` 顺序与 ``sranipal_head.fbx`` 导入 Blender 后、除 Basis 外的
-形态键顺序一致（口周 → 眼 → 舌）。CSV 每行须与此顺序一一对应，共 52 列。
+形态键顺序一致（口周 → 眼 → 舌），末尾追加本项目自定义通道。
+CSV 每行须与此顺序一一对应。
 
-Basis 为基准形，不由 CSV 驱动。网格上共 53 个形态键槽位 = Basis + 52 列。
+Basis 为基准形，不由 CSV 驱动。
 
 勿在元组中间增删改名称，否则旧 CSV 与已导出帧数据会与通道错位。
 """
 
 from __future__ import annotations
 
-# ---------- 与 sranipal_head.fbx / Head 网格一致的 52 个可驱动形态键 ----------
+# ---------- 形态键：前 52 个与 sranipal_head.fbx 一致，末尾为自定义扩展 ----------
 
 BLENDSHAPE_NAMES: tuple[str, ...] = (
     # --- 口颌与面颊（与旧版 SRanipal 37 通道中前 26 个顺序相同）---
@@ -68,6 +69,8 @@ BLENDSHAPE_NAMES: tuple[str, ...] = (
     "Tongue_UpRight_Morph",  # 舌右上方向形变
     "Tongue_DownLeft_Morph",  # 舌左下方向形变
     "Tongue_DownRight_Morph",  # 舌右下方向形变
+    # --- 自定义扩展（FBX 中不存在，由 blender_runtime 自动创建） ---
+    "Tongue_Dorsum_Arch",  # 舌背拱起：两头低中间高（bell curve 位移）
 )
 
 BLENDSHAPE_INDEX: dict[str, int] = {
@@ -75,10 +78,9 @@ BLENDSHAPE_INDEX: dict[str, int] = {
 }
 FRAME_WIDTH: int = len(BLENDSHAPE_NAMES)
 
-# 网格上含 Basis 时的形态键总数（仅说明用；CSV 不含 Basis）
-SHAPE_KEY_COUNT_WITH_BASIS: int = FRAME_WIDTH + 1
-# Blender 中第 53 个形态键（基准形，不由 CSV 写入）
 BASIS_SHAPE_KEY_NAME: str = "Basis"
+# FBX 中原有的标准形态键数（不含 Basis，不含自定义扩展）
+SRANIPAL_STANDARD_SHAPE_KEY_COUNT: int = 52
 
 # ---------- 预览与可视化默认 ----------
 
