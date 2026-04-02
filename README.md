@@ -20,7 +20,7 @@ uv sync
 uv sync --python 3.10
 ```
 
-仓库中还包含一个固定为 `3.10` 的 `.python-version` 文件，因此默认执行 `uv sync` 和 `uv run` 时会自动使用正确的解释器。
+仓库中还包含一个固定为 `3.10` 的 `.python-version` 文件，因此 `uv sync` 创建的虚拟环境以及你在该环境中执行的 `python` 会对应 Python 3.10。
 
 如果你想手动激活环境：
 
@@ -66,38 +66,48 @@ FaceBlenderShape/
 
 ## 人脸网格可视化器
 
-直接运行兼容脚本：
+统一 CLI 入口为 `face_blender_shape.cli`（`python -m face_blender_shape` 或安装后的 `face-blender-shape`）。当前仅提供子命令 `preview`，与 `face_blender_shape/cli.py` 一致。
 
 ```bash
-uv run python blender_interface.py
+python -m face_blender_shape preview --path data/examples/sample_data.csv
+# 若已通过 pip/uv 安装包，也可：
+# face-blender-shape preview --path data/examples/sample_data.csv
 ```
 
-播放示例 CSV：
+查看全部参数：
 
 ```bash
-uv run python blender_interface.py --path data/examples/sample_data.csv
+python -m face_blender_shape preview -h
 ```
 
-也可以使用统一 CLI：
+`preview` 选项说明：
+
+| 选项 | 说明 |
+|------|------|
+| `--path` | 必填。CSV 路径；每行列数与 `constants.FRAME_WIDTH`（与 `BLENDSHAPE_NAMES` 顺序一致）相同。 |
+| `--fps` | 播放帧率，默认 `30.0`。 |
+| `--fbx` | 覆盖默认头模 FBX 路径。 |
+| `--wireframe-head` | 头壳仅线框，舌保持实体网格，便于观察舌形变。 |
+| `--open3d-dual-view` | Open3D 双窗：侧面 + 正面。 |
+| `--open3d-camera-zoom Z` | Open3D `set_zoom` 初始缩放（默认 `0.2`）。 |
+| `--tongue-lo N` | 线框模式下舌顶点全局下标下界（含）；缺省与当前默认 FBX 一致。 |
+| `--tongue-hi N` | 线框模式下舌顶点全局下标上界（不含）；缺省与当前默认 FBX 一致。 |
+| `--tongue-adjacency-expand ITERS` | 沿共享边扩展舌三角面轮数，用于衔接区间外顶点；建议从小值试起。 |
+
+兼容脚本 `blender_interface.py` 调用同一套 `preview_sequence`，参数含义与上表相同，但**无子命令**，且 `--path` 必填。`--open3d-camera-zoom` 在该脚本中默认 `0.6`（与统一 CLI 的默认值不同）。
 
 ```bash
-uv run face-blender-shape preview --path data/examples/sample_data.csv
+python blender_interface.py --path data/examples/sample_data.csv
 ```
 
 <img src="docs/assets/facevis.gif" alt="drawing" width="200" height="320"/>
 
 ## Blender Shape 转关键点
 
-使用兼容脚本：
+统一 CLI **没有** `convert` 子命令；请使用顶层兼容脚本：
 
 ```bash
-uv run python sranipal2keypoints.py --path data/examples/sample_data.csv
-```
-
-或使用统一 CLI：
-
-```bash
-uv run face-blender-shape convert --path data/examples/sample_data.csv
+python sranipal2keypoints.py --path data/examples/sample_data.csv
 ```
 
 默认会在 `outputs/` 下生成对应的 `.npz` 文件，例如 `outputs/sample_data.npz`。
@@ -105,7 +115,7 @@ uv run face-blender-shape convert --path data/examples/sample_data.csv
 ## 生成 tongue demo
 
 ```bash
-uv run python scripts/generate_tongue_demo.py
+python scripts/generate_tongue_demo.py
 ```
 
 生成结果会写入 `outputs/tongue_demo.csv`。

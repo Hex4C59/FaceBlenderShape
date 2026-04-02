@@ -12,7 +12,15 @@ class RenderOption:
     line_width: float
 
 class Visualizer:
-    def create_window(self, window_name: str = ...) -> bool: ...
+    def create_window(
+        self,
+        window_name: str = ...,
+        width: int = ...,
+        height: int = ...,
+        left: int = ...,
+        top: int = ...,
+        visible: bool = ...,
+    ) -> bool: ...
     def add_geometry(self, geometry: Any, reset_bounding_box: bool = ...) -> bool: ...
     def update_geometry(self, geometry: Any) -> bool: ...
     def get_view_control(self) -> ViewControl: ...

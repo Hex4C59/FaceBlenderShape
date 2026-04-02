@@ -43,6 +43,8 @@ def preview_sequence(
     *,
     fbx_path: str | None = None,
     wireframe_head: bool = False,  # 是否头壳线框 + 舌实体。
+    open3d_dual_view: bool = False,
+    open3d_camera_zoom: float = 0.6,
     tongue_vertex_lo: int | None = None,
     tongue_vertex_hi: int | None = None,
     tongue_adjacency_expand: int = 0,
@@ -53,6 +55,8 @@ def preview_sequence(
     runtime = FaceBlenderRuntime(
         path=fbx_path,
         wireframe_head=wireframe_head,  # True 时头壳 LineSet、舌三角面实体
+        open3d_dual_view=open3d_dual_view,
+        open3d_camera_zoom=open3d_camera_zoom,
         tongue_vertex_lo=tongue_vertex_lo,
         tongue_vertex_hi=tongue_vertex_hi,
         tongue_adjacency_expand=tongue_adjacency_expand,
@@ -104,6 +108,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="头壳仅画线框，舌保持实体网格（默认肤色），便于透视观察舌形变",
     )
     preview_parser.add_argument(
+        "--open3d-dual-view",
+        action="store_true",
+        dest="open3d_dual_view",
+        help="Open3D 双窗：侧面 + 正面",
+    )
+    preview_parser.add_argument(
+        "--open3d-camera-zoom",
+        type=float,
+        default=0.2,
+        metavar="Z",
+        help="Open3D 初始镜头缩放 set_zoom（默认 0.6）",
+    )
+    preview_parser.add_argument(
         "--tongue-lo",
         type=int,
         default=None,
@@ -144,6 +161,8 @@ def handle_preview_command(args: argparse.Namespace) -> int:
         args.fps,
         fbx_path=args.fbx,
         wireframe_head=args.wireframe_head,
+        open3d_dual_view=args.open3d_dual_view,
+        open3d_camera_zoom=args.open3d_camera_zoom,
         tongue_vertex_lo=args.tongue_lo,
         tongue_vertex_hi=args.tongue_hi,
         tongue_adjacency_expand=args.tongue_adjacency_expand,

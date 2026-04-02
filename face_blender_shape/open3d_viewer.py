@@ -37,10 +37,12 @@ class Open3DMeshViewer:
         *,
         wireframe_head: bool = False,
         dual_view: bool = False,
+        camera_zoom: float = 0.6,
     ) -> None:
         """创建可视化窗口与内部 Visualizer（可选双窗：侧面 + 正面）。"""
         self._wireframe_head = wireframe_head
         self._dual = dual_view
+        self._camera_zoom = float(camera_zoom)
         self._visualizers: list[o3d.visualization.Visualizer] = []
         titles = (
             [window_name]
@@ -57,7 +59,7 @@ class Open3DMeshViewer:
                     height=_DUAL_VIEW_HEIGHT,
                     left=left,
                     top=_DUAL_VIEW_TOP,
-                )  # type: ignore[call-arg]
+                )
             else:
                 vis.create_window(window_name=title)
             self._visualizers.append(vis)
@@ -90,7 +92,7 @@ class Open3DMeshViewer:
         ctr.set_lookat(lookat)
         ctr.set_front(front)
         ctr.set_up(up)
-        ctr.set_zoom(0.6)
+        ctr.set_zoom(self._camera_zoom)
 
     def _init_cameras(self, lookat_points: NDArray[np.float64]) -> None:
         for vis, (front, up) in zip(self._visualizers, self._cam_front_up, strict=True):

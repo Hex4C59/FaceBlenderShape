@@ -14,6 +14,7 @@ def play_sequence(
     fbx_path: str | None = None,
     wireframe_head: bool = False,
     open3d_dual_view: bool = False,
+    open3d_camera_zoom: float = 0.6,
     tongue_vertex_lo: int | None = None,
     tongue_vertex_hi: int | None = None,
     tongue_adjacency_expand: int = 0,
@@ -26,6 +27,7 @@ def play_sequence(
         fbx_path: 可选，覆盖默认 FBX 模型路径。
         wireframe_head: 可选，头壳线框 + 舌实体。
         open3d_dual_view: 可选，Open3D 开侧视 + 正视两个窗口。
+        open3d_camera_zoom: Open3D 首次对准模型时的缩放（传给 ViewControl.set_zoom）。
         tongue_vertex_lo / tongue_vertex_hi: 线框模式下舌顶点下标范围。
         tongue_adjacency_expand: 舌面沿邻接边扩展轮数。
     """
@@ -35,6 +37,7 @@ def play_sequence(
         fbx_path=fbx_path,
         wireframe_head=wireframe_head,
         open3d_dual_view=open3d_dual_view,
+        open3d_camera_zoom=open3d_camera_zoom,
         tongue_vertex_lo=tongue_vertex_lo,
         tongue_vertex_hi=tongue_vertex_hi,
         tongue_adjacency_expand=tongue_adjacency_expand,
@@ -70,6 +73,13 @@ def main() -> None:
         help="Open3D 双窗：侧面 + 正面",
     )
     parser.add_argument(
+        "--open3d-camera-zoom",
+        type=float,
+        default=0.6,
+        metavar="Z",
+        help="Open3D 初始镜头缩放 set_zoom（默认 0.6；越大通常越「拉近」）",
+    )
+    parser.add_argument(
         "--tongue-lo",
         type=int,
         default=None,
@@ -98,6 +108,7 @@ def main() -> None:
         fbx_path=args.fbx,
         wireframe_head=args.wireframe_head,
         open3d_dual_view=args.open3d_dual_view,
+        open3d_camera_zoom=args.open3d_camera_zoom,
         tongue_vertex_lo=args.tongue_lo,
         tongue_vertex_hi=args.tongue_hi,
         tongue_adjacency_expand=args.tongue_adjacency_expand,
