@@ -253,10 +253,11 @@ def features_to_blendshapes(
     # --- 舌背拱起：专用自定义 shape key，直接表达「两头低中间高」 ---
     frames[:, BLENDSHAPE_INDEX["Tongue_Dorsum_Arch"]] = smooth(arch_n * 0.85, sigma)
 
-    # --- Tongue_Up：仅用倾角，不再承载拱起（拱起由 Dorsum_Arch 专管） ---
-    up_angle, down = norm_deviation(angle, scale=0.50)
-    frames[:, BLENDSHAPE_INDEX["Tongue_Up"]] = smooth(up_angle, sigma)
-    frames[:, BLENDSHAPE_INDEX["Tongue_Down"]] = smooth(down, sigma)
+    # --- Tongue_Up/Down：倾角 × 拱起交叉调制 ---
+    up_raw, down_raw = norm_deviation(angle, scale=0.50)
+    arch_boost = 1.0 + arch_n * 0.35
+    frames[:, BLENDSHAPE_INDEX["Tongue_Up"]] = smooth(up_raw * arch_boost, sigma)
+    frames[:, BLENDSHAPE_INDEX["Tongue_Down"]] = smooth(down_raw * (2.0 - arch_boost), sigma)
 
     curv_n = norm_range(curv_mag)
     roll = norm_range(curv_mag) * 0.36
