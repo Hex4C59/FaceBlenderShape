@@ -20,6 +20,7 @@ from face_blender_shape.constants import (
     BLENDSHAPE_NAMES,
     DEFAULT_OPEN3D_WINDOW_NAME,
     FRAME_WIDTH,
+    SRANIPAL_STANDARD_SHAPE_KEY_COUNT,
 )
 
 # 头舌网格拆分与线框边（与默认 FBX 舌顶点下标一致）。
@@ -178,6 +179,7 @@ class FaceBlenderRuntime:
             BLENDSHAPE_NAMES
         )  # 与 CSV 列顺序一致，与 _key_blocks 一一对应
         self.load_fbx(path)  # 将 FBX 导入当前 bpy 场景
+        self._ensure_custom_shape_keys()  # FBX 中不存在的自定义形态键
         self.set_active_object()  # 绑定 FBX 中唯一头网格与 shape key
 
         # ---- 帧缓存：首帧三角化后复用面索引与顶点缓冲，避免逐帧 bmesh 求值 ----
@@ -213,6 +215,49 @@ class FaceBlenderRuntime:
         apply_blender_fbx_light_cast_shadow_patch()
         # 将指定路径的 FBX 并入当前场景（网格、形态键等）；运算符要求 filepath 为 str。
         bpy.ops.import_scene.fbx(filepath=str(self.fbx_path))
+
+    def _ensure_custom_shape_keys(self) -> None:
+        """为 FBX 中没有的自定义通道创建 shape key（仅首次导入时执行）。"""
+        obj = bpy.data.objects[_HEAD_OBJECT_NAME]
+        kb = obj.data.shape_keys.key_blocks
+        custom_names = BLENDSHAPE_NAMES[SRANIPAL_STANDARD_SHAPE_KEY_COUNT:]
+        for name in custom_names:
+            if name in kb:
+                continue
+            if name == "Tongue_Dorsum_Arch":
+                self._create_dorsum_arch_shapekey(obj)
+
+    def _create_dorsum_arch_shapekey(self, obj: Any) -> None:
+        """用 Basis 舌顶点的 SVD 主方向，生成 bell-curve 拱背位移的 shape key。"""
+        basis = obj.data.shape_keys.key_blocks["Basis"]
+        lo, hi = self._tongue_lo, self._tongue_hi
+
+        coords = np.empty((hi - lo, 3), dtype=np.float64)
+        for i, vi in enumerate(range(lo, hi)):
+            coords[i] = basis.data[vi].co[:]
+
+        centroid = coords.mean(axis=0)
+        _, _, vt = np.linalg.svd(coords - centroid, full_matrices=False)
+
+        long_axis = vt[0]
+        proj = (coords - centroid) @ long_axis
+        t = (proj - proj.min()) / (proj.max() - proj.min() + 1e-12)
+
+        weight = np.sin(np.pi * t)
+
+        up = np.cross(vt[0], vt[1])
+        up /= np.linalg.norm(up) + 1e-12
+        if up[2] < 0:
+            up = -up
+
+        peak = (proj.max() - proj.min()) * 0.15
+
+        sk = obj.shape_key_add(name="Tongue_Dorsum_Arch", from_mix=False)
+        sk.value = 0.0
+        for i, vi in enumerate(range(lo, hi)):
+            d = weight[i] * peak * up
+            base = np.array(sk.data[vi].co[:])
+            sk.data[vi].co = (base + d).tolist()
 
     def set_active_object(self) -> None:
         """将头网格设为活动对象并绑定到当前视图层，同时缓存 shape key 引用。"""

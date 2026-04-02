@@ -210,6 +210,9 @@ def constrain_tongue_to_mouth_room(frames: NDArray[np.float64]) -> None:
     ):
         i = BLENDSHAPE_INDEX[name]
         frames[:, i] = np.minimum(frames[:, i], room * 0.58)
+    frames[:, BLENDSHAPE_INDEX["Tongue_Dorsum_Arch"]] = np.minimum(
+        frames[:, BLENDSHAPE_INDEX["Tongue_Dorsum_Arch"]], room * 0.90
+    )
 
 
 def features_to_blendshapes(
@@ -247,10 +250,12 @@ def features_to_blendshapes(
     frames[:, BLENDSHAPE_INDEX["Tongue_LongStep1"]] = ls1
     frames[:, BLENDSHAPE_INDEX["Tongue_LongStep2"]] = ls2
 
-    # --- 背峰：此头模上 Roll/双侧 Up morph 易成「侧高中凹」，拱起改主要由 Tongue_Up 表达 ---
-    up_angle, down = norm_deviation(angle, scale=0.40)
-    up_combined = np.clip(up_angle + arch_n * 0.72, 0.0, 1.0)
-    frames[:, BLENDSHAPE_INDEX["Tongue_Up"]] = smooth(up_combined, sigma)
+    # --- 舌背拱起：专用自定义 shape key，直接表达「两头低中间高」 ---
+    frames[:, BLENDSHAPE_INDEX["Tongue_Dorsum_Arch"]] = smooth(arch_n * 0.85, sigma)
+
+    # --- Tongue_Up：仅用倾角，不再承载拱起（拱起由 Dorsum_Arch 专管） ---
+    up_angle, down = norm_deviation(angle, scale=0.50)
+    frames[:, BLENDSHAPE_INDEX["Tongue_Up"]] = smooth(up_angle, sigma)
     frames[:, BLENDSHAPE_INDEX["Tongue_Down"]] = smooth(down, sigma)
 
     curv_n = norm_range(curv_mag)
