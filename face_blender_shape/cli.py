@@ -10,7 +10,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from face_blender_shape.blender_runtime import FaceBlenderRuntime
-from face_blender_shape.constants import DEFAULT_PLAYBACK_FPS, FRAME_WIDTH
+from face_blender_shape.constants import (
+    DEFAULT_PLAYBACK_FPS,
+    FRAME_WIDTH,
+    PREVIEW_MIN_SEQUENCE_SECONDS,
+)
 from face_blender_shape.landmarks import TONGUE_SLICE
 
 CommandHandler: TypeAlias = Callable[[Namespace], int]
@@ -48,6 +52,7 @@ def preview_sequence(
     tongue_vertex_lo: int | None = None,
     tongue_vertex_hi: int | None = None,
     tongue_adjacency_expand: int = 0,
+    min_preview_seconds: float = PREVIEW_MIN_SEQUENCE_SECONDS,
 ) -> None:
 
     data: NDArray[np.float64] = load_blendshape_csv(path)
@@ -65,6 +70,10 @@ def preview_sequence(
         1.0 / fps if fps > 0 else 0.0
     )  # 相邻两帧之间的间隔（秒）；fps≤0 时不等待
     frame_total = data.shape[0]  # CSV 行数，即总帧数
+    if fps > 0 and frame_total > 0 and min_preview_seconds > 0:
+        natural = frame_total / fps
+        if natural < min_preview_seconds:
+            frame_delay = min_preview_seconds / frame_total
 
     # 逐帧回放 CSV：每行是一帧的 blendshape 权重向量。
     for idx in range(frame_total):
@@ -95,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_PLAYBACK_FPS,
         help="播放帧率",
+    )
+    preview_parser.add_argument(
+        "--min-preview-seconds",
+        type=float,
+        default=PREVIEW_MIN_SEQUENCE_SECONDS,
+        metavar="SEC",
+        help=(
+            "整段预览至少持续此秒数，帧少则自动放慢（默认 "
+            f"{PREVIEW_MIN_SEQUENCE_SECONDS}；设为 0 则始终严格按 --fps）"
+        ),
     )
     preview_parser.add_argument(
         "--fbx",
@@ -166,6 +185,7 @@ def handle_preview_command(args: argparse.Namespace) -> int:
         tongue_vertex_lo=args.tongue_lo,
         tongue_vertex_hi=args.tongue_hi,
         tongue_adjacency_expand=args.tongue_adjacency_expand,
+        min_preview_seconds=args.min_preview_seconds,
     )
     return 0
 

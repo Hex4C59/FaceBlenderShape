@@ -3,24 +3,20 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
+
+import bpy  # pyright: ignore[reportMissingModuleSource]
+import io_scene_fbx.import_fbx as import_fbx  # pyright: ignore[reportMissingModuleSource]
 
 _patch_done = False
 
 
-def apply_blender_fbx_light_cast_shadow_patch() -> bool:
-    """在 ``bpy.ops.import_scene.fbx`` 之前调用。成功返回 True，非 Blender 环境返回 False。"""
+def apply_blender_fbx_light_cast_shadow_patch() -> None:
+    """在 ``bpy.ops.import_scene.fbx`` 之前调用；可重复调用，仅首次生效。"""
     global _patch_done
     if _patch_done:
-        return True
-    try:
-        import io_scene_fbx.import_fbx as import_fbx  # pyright: ignore[reportMissingModuleSource]
-    except ImportError:
-        return False
-
-    import math
-
-    import bpy  # pyright: ignore[reportMissingModuleSource]
+        return
 
     def blen_read_light_fixed(fbx_tmpl: Any, fbx_obj: Any, settings: Any) -> Any:
         elem_name_utf8 = import_fbx.elem_name_ensure_class(fbx_obj, b"NodeAttribute")
@@ -81,4 +77,3 @@ def apply_blender_fbx_light_cast_shadow_patch() -> bool:
 
     import_fbx.blen_read_light = blen_read_light_fixed
     _patch_done = True
-    return True

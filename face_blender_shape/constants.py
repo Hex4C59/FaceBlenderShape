@@ -70,7 +70,9 @@ BLENDSHAPE_NAMES: tuple[str, ...] = (
     "Tongue_DownRight_Morph",  # 舌右下方向形变
 )
 
-BLENDSHAPE_INDEX: dict[str, int] = {name: idx for idx, name in enumerate(BLENDSHAPE_NAMES)}
+BLENDSHAPE_INDEX: dict[str, int] = {
+    name: idx for idx, name in enumerate(BLENDSHAPE_NAMES)
+}
 FRAME_WIDTH: int = len(BLENDSHAPE_NAMES)
 
 # 网格上含 Basis 时的形态键总数（仅说明用；CSV 不含 Basis）
@@ -81,4 +83,6 @@ BASIS_SHAPE_KEY_NAME: str = "Basis"
 # ---------- 预览与可视化默认 ----------
 
 DEFAULT_PLAYBACK_FPS: float = 30.0  # CLI 顺序预览时相邻帧 sleep 依据
+# 预览时若按 fps 算出的整段时长短于此值（秒），则自动拉长每帧间隔（帧少则放慢）
+PREVIEW_MIN_SEQUENCE_SECONDS: float = 8.0
 DEFAULT_OPEN3D_WINDOW_NAME: str = "Face Blender Shape Viewer"

@@ -3,7 +3,7 @@
 import argparse
 
 from face_blender_shape.cli import preview_sequence
-from face_blender_shape.constants import DEFAULT_PLAYBACK_FPS
+from face_blender_shape.constants import DEFAULT_PLAYBACK_FPS, PREVIEW_MIN_SEQUENCE_SECONDS
 from face_blender_shape.landmarks import TONGUE_SLICE
 
 
@@ -18,6 +18,7 @@ def play_sequence(
     tongue_vertex_lo: int | None = None,
     tongue_vertex_hi: int | None = None,
     tongue_adjacency_expand: int = 0,
+    min_preview_seconds: float = PREVIEW_MIN_SEQUENCE_SECONDS,
 ) -> None:
     """按指定帧率播放 CSV blendshape 序列。
 
@@ -30,6 +31,7 @@ def play_sequence(
         open3d_camera_zoom: Open3D 首次对准模型时的缩放（传给 ViewControl.set_zoom）。
         tongue_vertex_lo / tongue_vertex_hi: 线框模式下舌顶点下标范围。
         tongue_adjacency_expand: 舌面沿邻接边扩展轮数。
+        min_preview_seconds: 整段最短预览秒数（帧少则放慢）；0 表示严格按 fps。
     """
     preview_sequence(
         path,
@@ -41,6 +43,7 @@ def play_sequence(
         tongue_vertex_lo=tongue_vertex_lo,
         tongue_vertex_hi=tongue_vertex_hi,
         tongue_adjacency_expand=tongue_adjacency_expand,
+        min_preview_seconds=min_preview_seconds,
     )
 
 
@@ -100,6 +103,13 @@ def main() -> None:
         metavar="ITERS",
         help="舌三角面邻接扩展轮数（默认 0）",
     )
+    parser.add_argument(
+        "--min-preview-seconds",
+        type=float,
+        default=PREVIEW_MIN_SEQUENCE_SECONDS,
+        metavar="SEC",
+        help=f"整段最短预览秒数，帧少则放慢（默认 {PREVIEW_MIN_SEQUENCE_SECONDS}；0=严格按 fps）",
+    )
     args = parser.parse_args()
 
     play_sequence(
@@ -112,6 +122,7 @@ def main() -> None:
         tongue_vertex_lo=args.tongue_lo,
         tongue_vertex_hi=args.tongue_hi,
         tongue_adjacency_expand=args.tongue_adjacency_expand,
+        min_preview_seconds=args.min_preview_seconds,
     )
 
 

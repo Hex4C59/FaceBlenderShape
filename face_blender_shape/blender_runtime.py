@@ -46,9 +46,7 @@ def _tag_redraw_view3d() -> None:
     if window is not None:
         try:
             with ctx.temp_override(window=window):
-                cast(Any, bpy.ops).wm.redraw_timer(
-                    type="DRAW_WIN_SWAP", iterations=1
-                )
+                cast(Any, bpy.ops).wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
         except (RuntimeError, AttributeError):
             pass
 
@@ -86,6 +84,14 @@ _DEFAULT_FBX_PATH = _MODELS_DIR / "sranipal_head.fbx"
 _HEAD_OBJECT_NAME = "Head"
 
 
+def _object_eval_to_mesh(obj_eval: Any, depsgraph: Any) -> Any:
+    """兼容不同 Blender 版本：``to_mesh`` 是否接受 ``depsgraph`` 关键字。"""
+    try:
+        return obj_eval.to_mesh(depsgraph=depsgraph)
+    except TypeError:
+        return obj_eval.to_mesh()
+
+
 def _fan_triangulate_to_new_mesh(mesh_eval: Any) -> Any:
     """将已求值网格扇形三角化并写入新的 Mesh 数据块。"""
     verts = [tuple(v.co) for v in mesh_eval.vertices]
@@ -111,10 +117,7 @@ def _modified_mesh_without_bmesh(obj: Any, cage: bool) -> Any:
     _ = cage
     depsgraph = bpy.context.evaluated_depsgraph_get()
     obj_eval = obj.evaluated_get(depsgraph)
-    try:
-        mesh_eval = obj_eval.to_mesh(depsgraph=depsgraph)
-    except TypeError:
-        mesh_eval = obj_eval.to_mesh()
+    mesh_eval = _object_eval_to_mesh(obj_eval, depsgraph)
     if mesh_eval is None:
         raise RuntimeError(
             "无法将对象转为网格（to_mesh 返回 None），请确认对象为可求值的网格。"
@@ -298,10 +301,7 @@ class FaceBlenderRuntime:
         depsgraph.update()
         obj_eval = self.active_obj.evaluated_get(depsgraph)
 
-        try:
-            mesh_eval = obj_eval.to_mesh(depsgraph=depsgraph)
-        except TypeError:
-            mesh_eval = obj_eval.to_mesh()
+        mesh_eval = _object_eval_to_mesh(obj_eval, depsgraph)
 
         assert self._co_buf is not None
         mesh_eval.vertices.foreach_get("co", self._co_buf)
