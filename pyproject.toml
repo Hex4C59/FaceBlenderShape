@@ -96,6 +96,3 @@ explicit = true
 # typings/ 下为 Blender、Open3D 等无类型信息或需覆盖的模块提供存根。
 [tool.basedpyright]
 stubPath = "typings"
-
-[tool.pyright]
-stubPath = "typings"
