@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>二维舌背轨迹驱动头部运动 · 算法流程图</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #fff;
+  color: #222;
+  padding: 40px 32px 56px;
+  min-width: 900px;
+}
+
+.page-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 40px;
+  letter-spacing: 0.5px;
+}
+
+.diagram {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.arrow-down {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+}
+.arrow-down .shaft {
+  width: 2px;
+  height: 28px;
+  background: #555;
+}
+.arrow-down .head {
+  width: 0; height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid #555;
+}
+.arrow-down .label {
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0;
+  white-space: nowrap;
+}
+
+.card {
+  border: 2px solid #D4740A;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.card b { font-weight: 600; }
+.card .sub { font-size: 12px; color: #888; }
+
+.group {
+  border: 2.5px solid #D4740A;
+  border-radius: 14px;
+  background: #fff;
+  width: 100%;
+  max-width: 920px;
+  position: relative;
+  padding: 44px 28px 24px;
+}
+.group-title {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #D4740A;
+  white-space: nowrap;
+  line-height: 2;
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sub-group {
+  border: 2px solid #D4740A;
+  border-radius: 10px;
+  background: #fff;
+  position: relative;
+  padding: 38px 18px 16px;
+  flex: 1;
+  min-width: 260px;
+}
+.sub-group-title {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #D4740A;
+  white-space: nowrap;
+  line-height: 2;
+}
+
+.item {
+  border: 1.5px solid #D4740A;
+  border-radius: 7px;
+  background: #fff;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.item + .item { margin-top: 8px; }
+
+.hflow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+.hflow .item {
+  min-width: 140px;
+}
+.arrow-right {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+.arrow-right .shaft {
+  width: 32px;
+  height: 2px;
+  background: #555;
+}
+.arrow-right .head {
+  width: 0; height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 8px solid #555;
+}
+
+.inner-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+}
+.inner-arrow .shaft {
+  width: 2px;
+  height: 16px;
+  background: #888;
+}
+.inner-arrow .head {
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #888;
+}
+.inner-arrow .label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 2px;
+}
+
+.feat-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.map-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+}
+
+.post-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 0;
+}
+.post-row .item { flex: 1; max-width: 280px; }
+</style>
+</head>
+<body>
+
+<div class="page-title">二维舌背轨迹 → 混合形状权重 → 头部驱动 · 算法流程图</div>
+
+<div class="diagram">
+
+  <!-- ════════ 输入 ════════ -->
+  <div class="card" style="min-width:360px;">
+    <b>舌背轨迹坐标文件</b><br>
+    <span class="sub">每帧 3 个二维采样点：舌根(x,y)　舌体(x,y)　舌尖(x,y)</span>
+  </div>
+
+  <div class="arrow-down">
+    <div class="shaft"></div>
+    <div class="label">读取并按视频片段分组</div>
+    <div class="shaft"></div>
+    <div class="head"></div>
+  </div>
+
+  <!-- ════════ 阶段一 ════════ -->
+  <div class="group">
+    <div class="group-title">阶段一 · 几何特征提取</div>
+
+    <div class="row" style="margin-bottom:12px;">
+      <div class="card" style="font-size:13px;">
+        拆分三点坐标<br>
+        <span class="sub">舌根 = 第 0~1 列　舌体 = 第 2~3 列　舌尖 = 第 4~5 列</span>
+      </div>
+    </div>
+
+    <div class="inner-arrow">
+      <div class="shaft"></div>
+      <div class="head"></div>
+    </div>
+
+    <div class="feat-row">
+      <div class="item">
+        <b>弦长</b><br>
+        ‖舌尖 − 舌根‖<br>
+        <span class="sub">舌背前伸幅度</span>
+      </div>
+      <div class="item">
+        <b>仰角</b><br>
+        反正切(−Δy, Δx)<br>
+        <span class="sub">舌尖相对舌根的角度</span>
+      </div>
+      <div class="item">
+        <b>曲率</b><br>
+        二维叉积<br>
+        <span class="sub">舌体偏离弦的垂距</span>
+      </div>
+      <div class="item">
+        <b>舌背拱起</b><br>
+        弦上投影 y − 舌体 y<br>
+        <span class="sub">中段隆起高度</span>
+      </div>
+      <div class="item">
+        <b>舌根纵坐标</b><br>
+        舌根垂直位置<br>
+        <span class="sub">向下越大≈嘴越张</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <div class="shaft"></div>
+    <div class="label">百分位归一化 · 缩放至 [0, 1] 区间</div>
+    <div class="shaft"></div>
+    <div class="head"></div>
+  </div>
+
+  <!-- ════════ 阶段二 ════════ -->
+  <div class="group">
+    <div class="group-title">阶段二 · 特征 → 53 列混合形状权重映射</div>
+
+    <div class="map-row">
+      <div class="sub-group">
+        <div class="sub-group-title">舌通道映射</div>
+        <div class="item">弦长 → <b>舌伸出（第一段 / 第二段）</b><br><span class="sub">前伸程度，拱起时阻尼抑制</span></div>
+        <div class="item">舌背拱起 → <b>舌背拱起（自定义形态键）</b><br><span class="sub">两头低中间高的隆起变形</span></div>
+        <div class="item">仰角 → <b>舌上翘 / 舌下压</b><br><span class="sub">正/负偏差 × 拱起增强系数</span></div>
+        <div class="item">|曲率| → <b>卷舌</b><br><span class="sub">垂距幅值的弱输入</span></div>
+        <div class="item">仰角 × 曲率 → <b>四角形变 ×4</b><br><span class="sub">左上 / 右上 / 左下 / 右下</span></div>
+      </div>
+      <div class="sub-group">
+        <div class="sub-group-title">口型通道映射</div>
+        <div class="item">舌根纵坐标 → <b>张嘴</b><br><span class="sub">基线 0.12 + 归一化值 × 0.50</span></div>
+        <div class="item">舌根纵坐标 → <b>大张口</b><br><span class="sub">归一化值 × 0.12</span></div>
+        <div class="item">舌根纵坐标 → <b>唇辅助 4 通道</b><br><span class="sub">上唇左右提拉 · 下唇左右下压</span></div>
+      </div>
+    </div>
+
+    <div class="inner-arrow">
+      <div class="shaft"></div>
+      <div class="label">一维高斯时域平滑（σ = 1.5 帧）</div>
+      <div class="shaft"></div>
+      <div class="head"></div>
+    </div>
+
+    <div class="post-row">
+      <div class="item">
+        <b>舌列受口张约束</b><br>
+        <span class="sub">空间 = 张嘴 + 0.5 × 大张口<br>限制舌通道 ≤ 空间 × 系数，防穿出嘴唇</span>
+      </div>
+      <div class="item">
+        <b>裁剪至 [0, 1]</b><br>
+        <span class="sub">输出每帧 53 维权重，全通道限幅</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <div class="shaft"></div>
+    <div class="label">输出混合形状权重文件 · 首行列名 + 逐帧数值</div>
+    <div class="shaft"></div>
+    <div class="head"></div>
+  </div>
+
+  <!-- ════════ 阶段三 ════════ -->
+  <div class="group">
+    <div class="group-title">阶段三 · 混合形状权重 → 三维网格预览</div>
+
+    <div class="hflow">
+      <div class="item">
+        <b>加载权重文件</b><br>
+        <span class="sub">读取为 N×53 数值矩阵</span>
+      </div>
+      <div class="arrow-right"><div class="shaft"></div><div class="head"></div></div>
+      <div class="item">
+        <b>初始化运行时</b><br>
+        <span class="sub">导入头部模型 · 绑定形态键</span>
+      </div>
+      <div class="arrow-right"><div class="shaft"></div><div class="head"></div></div>
+      <div class="item" style="min-width:180px;">
+        <b>逐帧变形求值</b><br>
+        <span class="sub">写入形态键权重<br>依赖图求值 → 读回顶点坐标</span>
+      </div>
+      <div class="arrow-right"><div class="shaft"></div><div class="head"></div></div>
+      <div class="item">
+        <b>实时三维显示</b><br>
+        <span class="sub">刷新三维视口渲染</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

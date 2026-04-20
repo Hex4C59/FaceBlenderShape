@@ -86,5 +86,5 @@ SRANIPAL_STANDARD_SHAPE_KEY_COUNT: int = 52
 
 DEFAULT_PLAYBACK_FPS: float = 30.0  # CLI 顺序预览时相邻帧 sleep 依据
 # 预览时若按 fps 算出的整段时长短于此值（秒），则自动拉长每帧间隔（帧少则放慢）
-PREVIEW_MIN_SEQUENCE_SECONDS: float = 8
+PREVIEW_MIN_SEQUENCE_SECONDS: float = 5
 DEFAULT_OPEN3D_WINDOW_NAME: str = "Face Blender Shape Viewer"
